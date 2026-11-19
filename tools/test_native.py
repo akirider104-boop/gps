@@ -42,6 +42,10 @@ async def main():
     await pg.wait_for_timeout(3000)
     print('photos', await pg.evaluate("S.photos.map(p=>[p.assetId,p.src,p.lat])"))
     await pg.screenshot(path=''+SHOTS+'/n3_detail.png', full_page=True)
+    # 壊れた写真（中身が空）を作って、カメラロールから修復されるか
+    await pg.evaluate("(async()=>{const ps=await photosOf(S.detail.id); const p=ps.find(x=>x.assetId==='A1'); p.thumb=new Blob([]); p.blob=new Blob([]); await idbPut('photos',p); await renderPhotos();})()")
+    await pg.wait_for_timeout(1500)
+    print('repaired', await pg.evaluate("S.photos.map(p=>[p.assetId,p.broken,p.thumb.size>0])"), await pg.text_content('#toast'))
     print('calls', await pg.evaluate("[...new Set(__calls)]"))
     print('native?', await pg.evaluate('NATIVE')); print('errors', errs)
     await b.close()

@@ -38,6 +38,7 @@ async def main():
     print('after drag2', await pg.evaluate(lab))
     await pg.reload(); await pg.wait_for_timeout(500); await pg.evaluate("openTrip('to')"); await pg.wait_for_timeout(1000)
     print('persisted', await pg.evaluate(lab))
+    print('photo records untouched:', await pg.evaluate("(async()=>(await idbAll('photos')).every(p=>p.order==null&&p.place==null))()"), 'trip.photoOrder', await pg.evaluate("(async()=>(await idbGet('trips','to')).photoOrder.length)()"))
     await pg.set_input_files('#addPhotos', [f'{TESTDATA}/photo4.jpg'])   # 12:20 を後から追加
     await pg.wait_for_function("!document.querySelector('#toast').textContent.includes('読み込み中')", timeout=60000)
     print('added later', await pg.evaluate(lab))

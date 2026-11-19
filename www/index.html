@@ -680,9 +680,11 @@ const inTrip = (p, trip = S.detail) => p.t != null && trip && p.t >= trip.start 
 // 並び順：走行中のもの（自分の写真・他機器の写真とも）を時刻順 → その後に範囲外・時刻不明を追加順
 function orderPhotos(list, trip) {
   if (trip && trip.customOrder) {
-    // 並べ替え済み：保存した順。あとから追加した分は、走行中なら時刻の近い位置、それ以外は最後へ
-    const ordered = list.filter(p => p.order != null).sort((x, y) => x.order - y.order);
-    const rest = list.filter(p => p.order == null).sort((x, y) => (x.t ?? 9e15) - (y.t ?? 9e15) || (x.added || 0) - (y.added || 0));
+    // 並べ替え済み：記録側に保存した順（写真データは書き換えない）。あとから追加した分は、走行中なら時刻の近い位置、それ以外は最後へ
+    const pos = new Map((trip.photoOrder || []).map((id, i) => [id, i]));
+    const oi = p => pos.has(p.id) ? pos.get(p.id) : p.order != null ? 1e6 + p.order : null;
+    const ordered = list.filter(p => oi(p) != null).sort((x, y) => oi(x) - oi(y));
+    const rest = list.filter(p => oi(p) == null).sort((x, y) => (x.t ?? 9e15) - (y.t ?? 9e15) || (x.added || 0) - (y.added || 0));
     for (const p of rest) {
       if (!inTrip(p, trip)) { ordered.push(p); continue; }
       let idx = -1; ordered.forEach((q, i) => { if (inTrip(q, trip) && q.t <= p.t) idx = i; });
@@ -788,14 +790,17 @@ async function addPhotos(files) {
 async function renderPhotos() {
   const trip = S.detail;
   S.thumbURLs.forEach(u => URL.revokeObjectURL(u)); S.thumbURLs = [];
-  S.photos = orderPhotos(await photosOf(trip.id), trip);
+  const all = await photosOf(trip.id);
+  for (const p of all) if (trip.places && trip.places[p.id]) p.place = trip.places[p.id];
+  await checkPhotos(all, trip);
+  S.photos = orderPhotos(all, trip);
   const g = $('#photoGrid');
   g.innerHTML = S.photos.length ? '' : '<div class="empty" style="grid-column:1/-1">写真・動画はまだありません</div>';
   for (const p of S.photos) {
     const u = URL.createObjectURL(p.thumb); S.thumbURLs.push(u);
     const rin = inTrip(p, trip);
     const d = document.createElement('div'); d.className = 'ph'; d.dataset.id = p.id;
-    const badge = !rin ? '<span class="warn" style="background:rgba(90,100,115,.9)">追加分</span>' : p.lat == null ? '<span class="warn">位置なし</span>' : '';
+    const badge = p.broken ? '<span class="warn">読み込めません</span>' : !rin ? '<span class="warn" style="background:rgba(90,100,115,.9)">追加分</span>' : p.lat == null ? '<span class="warn">位置なし</span>' : '';
     d.innerHTML = `<img src="${u}" alt="">${p.kind === 'video' ? `<span class="vbadge">▶ ${fmtDur(p.dur || 0)}</span>` : ''}
       <div class="cap">${rin ? fmtHM(p.t) + '<br>' + esc(p.place || '') : '日時なし'}</div>${badge}<button class="x" title="削除">✕</button>
       `;
@@ -808,6 +813,27 @@ async function renderPhotos() {
   drawPhotoMarkers();
 }
 // 長押しして指で動かすと、自動・手動に関係なく全体で並べ替え
+// iPhoneの保存領域で壊れた写真データを検出し、カメラロール由来のものは取り直して修復する
+async function blobOK(b) { try { if (!b || !b.size) return false; await b.slice(0, 16).arrayBuffer(); return true; } catch { return false; } }
+async function checkPhotos(list, trip) {
+  let fixed = 0, lost = 0;
+  for (const p of list) {
+    if (p._checked) continue;
+    const ok = (await blobOK(p.thumb)) && (await blobOK(p.blob));
+    p._checked = true; p.broken = !ok;
+    if (ok) continue;
+    if (NATIVE && RP && p.assetId && p.kind !== 'video') {
+      try {
+        const { data } = await RP.getPhoto({ id: p.assetId, maxSize: 2048 });
+        const fresh = await b64ToBlob(data), { im, u } = await loadImg(fresh);
+        try { const { broken, _checked, ...rec } = p; rec.blob = await resizeTo(im, 2048); rec.thumb = await resizeTo(im, 360, .8); await idbPut('photos', rec); Object.assign(p, rec, { broken: false }); fixed++; }
+        finally { URL.revokeObjectURL(u); }
+      } catch { lost++; }
+    } else lost++;
+  }
+  if (fixed) toast(`壊れていた写真 ${fixed}枚をカメラロールから修復しました`, 4000);
+  else if (lost) toast(`読み込めない写真・動画が${lost}件あります。✕で外して、もう一度追加してください`, 5000);
+}
 function setupSortable() {
   if (!window.Sortable || S.sortable) return;
   S.sortable = Sortable.create($('#photoGrid'), {
@@ -818,17 +844,15 @@ function setupSortable() {
 }
 async function saveOrder() {
   const trip = S.detail; if (!trip) return;
-  const ids = [...$('#photoGrid').querySelectorAll('.ph')].map(d => d.dataset.id);
-  const byId = new Map(S.photos.map(p => [p.id, p]));
-  for (let k = 0; k < ids.length; k++) { const p = byId.get(ids[k]); if (p && p.order !== k + 1) { p.order = k + 1; await idbPut('photos', p); } }
-  if (!trip.customOrder) { trip.customOrder = true; await idbPut('trips', trip); }
+  trip.photoOrder = [...$('#photoGrid').querySelectorAll('.ph')].map(d => d.dataset.id);
+  trip.customOrder = true;
+  await idbPut('trips', trip);
   await renderPhotos();
 }
 async function resetOrder() {
   const trip = S.detail; if (!trip) return;
   if (!(await ask('並べ替えをやめて、撮影時刻順に戻しますか？', '時刻順に戻す'))) return;
-  trip.customOrder = false; await idbPut('trips', trip);
-  for (const p of S.photos) if (p.order != null) { delete p.order; await idbPut('photos', p); }
+  trip.customOrder = false; trip.photoOrder = null; await idbPut('trips', trip);
   await renderPhotos();
 }
 function drawPhotoMarkers() {
@@ -895,7 +919,7 @@ async function resolvePlaces(onProgress) {
     onProgress && onProgress(++i, need.length);
     const n = await placeName(p.lat, p.lon);
     p.place = n || `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}`;
-    if (n) await idbPut('photos', p);
+    if (n) { const trip = S.detail; trip.places = trip.places || {}; trip.places[p.id] = n; await idbPut('trips', trip); }
   }
 }
 
@@ -1352,7 +1376,7 @@ async function makeBackup() {
     const blobs = []; let off = 0;
     const addBlob = b => { const o = { off, len: b.size }; blobs.push(b); off += b.size; return o; };
     const man = { version: 1, created: Date.now(), trips, photos: [], music: [] };
-    for (const p of photos) { const { blob, thumb, ...meta } = p; meta.b = addBlob(blob); meta.th = addBlob(thumb); man.photos.push(meta); }
+    for (const p of photos) { if (!(await blobOK(p.blob)) || !(await blobOK(p.thumb))) continue; const { blob, thumb, ...meta } = p; meta.b = addBlob(blob); meta.th = addBlob(thumb); man.photos.push(meta); }
     for (const m of music) { const { blob, ...meta } = m; meta.b = addBlob(blob); man.music.push(meta); }
     const mbytes = new TextEncoder().encode(JSON.stringify(man));
     const head = new Uint8Array(14); head.set(new TextEncoder().encode(BK_MAGIC), 0); new DataView(head.buffer).setUint32(10, mbytes.length, true);
@@ -1571,6 +1595,7 @@ function buildSlides() {
   const VMAX = +$('#ssVid').value;
   const slides = [{ type: 'title', dur: 4.5 }];
   for (const p of S.photos) {
+    if (p.broken) continue;
     const dur = p.kind === 'video' ? Math.max(1.5, Math.min(VMAX, (p.dur || D) - .1)) : D;
     slides.push({ type: 'photo', dur, p, rin: inTrip(p, trip), video: p.kind === 'video' });
   }
