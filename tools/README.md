@@ -4,6 +4,7 @@
 - `test_v2.py` … 全機能のブラウザテスト（地図・標高タイルと地名検索はモック）
 - `test_native.py` … iPhoneのネイティブブリッジを模擬したテスト
 - `test_pause.py` … 一時停止のテスト
+- `test_media.py` … 動画・他機器の写真・日時なし分の並べ替え（素材: ffmpeg で `vid_in.mp4`(creation_time付き) / `vid_none.mp4`、PILで `other_noexif.jpg` を TESTDATA に作る）
 - `render_ios_assets.py` … assets/icon.svg からアプリアイコン・起動画面を生成
 
 前提: Python + playwright、/usr/bin/google-chrome。`www/` を `-d` で配信してテストします。

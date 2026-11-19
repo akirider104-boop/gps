@@ -146,6 +146,11 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
 #live.paused .badge .rec{animation:none;background:var(--acc2)}
 #live.paused .speed .v{color:var(--sub)}
 .livebtns .btn{padding:16px 8px;font-size:15px;white-space:nowrap}
+.vbadge{position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.65);border-radius:6px;padding:1px 5px;z-index:2}
+.phhead{grid-column:1/-1;font-size:12px;color:var(--sub);margin:10px 2px 2px}
+.ph .mv{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;justify-content:space-between;padding:0 3px;z-index:3}
+.ph .mv button{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.6);font-size:12px}
+.ph .mv button:disabled{opacity:.25}
 </style>
 </head>
 <body>
@@ -247,15 +252,15 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
   <h2>写真とスライドショー</h2>
   <div class="row" style="margin-bottom:10px">
     <button class="btn acc" id="btnLib" style="display:none">📷 カメラロールから取り込み</button>
-    <label class="btn acc filebtn" id="lblAdd">＋ 写真を追加<input type="file" accept="image/*" multiple id="addPhotos"></label>
-    <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="chkOut">時間外の写真も入れる</label>
+    <label class="btn acc filebtn" id="lblAdd">＋ 写真を追加<input type="file" accept="image/*,video/*" multiple id="addPhotos"></label>
   </div>
-  <p class="muted" style="margin:0 0 10px">走行中にカメラで撮った写真をまとめて選んでください。撮影時刻で今回の走行分だけを自動で取り込みます。</p>
+  <p class="muted" style="margin:0 0 10px">走行中に撮った写真は時刻順に並びます。他の機器の写真・動画も日時を問わず追加でき、走行外・日時不明のものは最後に（日時・地図なしで）流れます。</p>
   <div class="photos" id="photoGrid"></div>
   <div class="card" style="margin-top:14px">
     <div class="row">
       <select id="ssAspect"><option value="h">横 16:9</option><option value="v">縦 9:16</option></select>
       <select id="ssDur"><option value="1">1枚 1秒</option><option value="1.5">1枚 1.5秒</option><option value="2">1枚 2秒</option><option value="3" selected>1枚 3秒</option><option value="4">1枚 4秒</option><option value="5">1枚 5秒</option></select>
+      <select id="ssVid"><option value="5">動画 最大5秒</option><option value="10" selected>動画 最大10秒</option><option value="15">動画 最大15秒</option><option value="30">動画 最大30秒</option></select>
       <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ssMap" checked>写真に地図</label>
     </div>
     <div class="row" style="margin-top:10px"><span class="muted">BGM</span><select id="ssBgm" style="flex:1"></select></div>
@@ -663,56 +668,146 @@ async function importPhoto(file, trip, meta) {
   try {
     const blob = await resizeTo(im, 2048), thumb = await resizeTo(im, 360, .8);
     const rec = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 7), tripId: trip.id, t: meta.t, lat: meta.lat, lon: meta.lon,
-      src: meta.src, assetId: meta.assetId || null, timeKnown: meta.timeKnown !== false, place: null, blob, thumb, w: im.naturalWidth, h: im.naturalHeight };
+      src: meta.src, assetId: meta.assetId || null, kind: 'photo', added: Date.now(), place: null, blob, thumb, w: im.naturalWidth, h: im.naturalHeight };
     await idbPut('photos', rec);
     return rec;
   } finally { URL.revokeObjectURL(u); }
 }
+// 走行中（前後15分）に撮られたか。範囲外・時刻不明は「おまけ」扱いで日時/地図を出さない
+const inTrip = (p, trip = S.detail) => p.t != null && trip && p.t >= trip.start - 900000 && p.t <= trip.end + 900000;
+// 並び順：走行中のもの（自分の写真・他機器の写真とも）を時刻順 → その後に範囲外・時刻不明を追加順
+function orderPhotos(list, trip) {
+  const a = list.filter(p => inTrip(p, trip)).sort((x, y) => x.t - y.t);
+  const key = p => p.order ?? p.added ?? 0;
+  const b = list.filter(p => !inTrip(p, trip)).sort((x, y) => key(x) - key(y) || x.id.localeCompare(y.id));
+  return a.concat(b);
+}
+// MOV/MP4 のメタデータから撮影日時と位置を読む（iPhone等）
+async function videoMeta(file) {
+  const out = { t: null, lat: null, lon: null };
+  try {
+    let off = 0, moov = null;
+    for (let k = 0; k < 64 && off + 8 <= file.size; k++) {
+      const h = new DataView(await file.slice(off, off + 16).arrayBuffer());
+      let size = h.getUint32(0); const type = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+      if (size === 1) size = Number(h.getBigUint64(8)); else if (size === 0) size = file.size - off;
+      if (size < 8) break;
+      if (type === 'moov') { if (size < 64 * 1024 * 1024) moov = new Uint8Array(await file.slice(off, off + size).arrayBuffer()); break; }
+      off += size;
+    }
+    if (!moov) return out;
+    let txt = ''; for (let i = 0; i < moov.length; i++) txt += String.fromCharCode(moov[i]);
+    const iso = txt.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-]\d{2}):?(\d{2})/);
+    if (iso) { const d = new Date(`${iso[1]}${iso[2]}:${iso[3]}`); if (!isNaN(d)) out.t = d.getTime(); }
+    if (out.t == null) {
+      const i = txt.indexOf('mvhd');
+      if (i > 0) { const dv = new DataView(moov.buffer, i + 4); const ver = dv.getUint8(0); const sec = ver === 1 ? Number(dv.getBigUint64(4)) : dv.getUint32(4); if (sec > 3e9) out.t = (sec - 2082844800) * 1000; }
+    }
+    const g = txt.match(/([+-]\d{1,2}\.\d{3,})([+-]\d{1,3}\.\d{3,})/);
+    if (g) { out.lat = parseFloat(g[1]); out.lon = parseFloat(g[2]); }
+  } catch {}
+  return out;
+}
+function videoThumb(file) {
+  return new Promise(res => {
+    const v = document.createElement('video'); const u = URL.createObjectURL(file);
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.setAttribute('playsinline', '');
+    let done = false;
+    const finish = async ok => {
+      if (done) return; done = true; clearTimeout(to);
+      let thumb = null, w = v.videoWidth || 1280, h = v.videoHeight || 720;
+      try {
+        const sc = Math.min(1, 360 / Math.max(w, h)), c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+        const cx = c.getContext('2d'); cx.fillStyle = '#1d2633'; cx.fillRect(0, 0, c.width, c.height);
+        if (ok) cx.drawImage(v, 0, 0, c.width, c.height);
+        thumb = await new Promise(r => c.toBlob(r, 'image/jpeg', .8));
+      } catch {}
+      const dur = isFinite(v.duration) ? v.duration : 0;
+      URL.revokeObjectURL(u); res({ thumb, dur, w, h });
+    };
+    const to = setTimeout(() => finish(false), 10000);
+    v.onloadedmetadata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 3); } catch { finish(false); } };
+    v.onseeked = () => finish(true);
+    v.onerror = () => finish(false);
+    v.src = u; v.load();
+  });
+}
+async function importVideo(file, trip, meta) {
+  const th = await videoThumb(file);
+  if (!th.thumb) throw new Error('thumb');
+  const rec = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 7), tripId: trip.id, kind: 'video', mime: file.type || 'video/mp4',
+    t: meta.t, lat: meta.lat, lon: meta.lon, src: meta.src, assetId: meta.assetId || null, place: null, added: Date.now(),
+    blob: file, thumb: th.thumb, dur: th.dur, w: th.w, h: th.h };
+  await idbPut('photos', rec);
+  return rec;
+}
+// 手動追加：日時を問わず取り込む（他の機器の写真・動画もOK）
 async function addPhotos(files) {
   const trip = S.detail; if (!trip || !files.length) return;
-  const includeOut = $('#chkOut').checked;
-  const margin = 15 * 60000;
-  let added = 0, skipped = 0, failed = 0, i = 0;
+  let added = 0, extra = 0, failed = 0, big = 0, i = 0;
   for (const file of files) {
-    i++; toast(`写真を読み込み中… ${i}/${files.length}`, 60000);
-    let ex = null;
-    try { ex = window.exifr ? await exifr.parse(file) : null; } catch {}
-    const exT = ex && (ex.DateTimeOriginal || ex.CreateDate);
-    let t = exT instanceof Date && !isNaN(exT) ? exT.getTime() : null;
-    let timeKnown = t != null;
-    if (t == null && file.lastModified) t = file.lastModified;
-    const inRange = t != null && t >= trip.start - margin && t <= trip.end + margin;
-    if (!inRange && !includeOut) { skipped++; continue; }
-    let lat = ex && typeof ex.latitude === 'number' ? ex.latitude : null, lon = ex && typeof ex.longitude === 'number' ? ex.longitude : null, src = 'exif';
-    if (lat == null && inRange) { const p = posAt(trip.points, t); if (p) { lat = p.lat; lon = p.lon; src = 'track'; } }
-    if (lat == null) src = 'none';
-    try { await importPhoto(file, trip, { t, lat, lon, src, timeKnown: timeKnown && inRange ? true : timeKnown }); added++; }
-    catch { failed++; }
+    i++; toast(`読み込み中… ${i}/${files.length}`, 60000);
+    const isVideo = (file.type || '').startsWith('video') || /\.(mov|mp4|m4v)$/i.test(file.name);
+    try {
+      let t = null, lat = null, lon = null;
+      if (isVideo) {
+        if (file.size > 600 * 1024 * 1024) { big++; continue; }
+        ({ t, lat, lon } = await videoMeta(file));
+      } else {
+        let ex = null; try { ex = window.exifr ? await exifr.parse(file) : null; } catch {}
+        const exT = ex && (ex.DateTimeOriginal || ex.CreateDate);
+        t = exT instanceof Date && !isNaN(exT) ? exT.getTime() : null;
+        if (ex && typeof ex.latitude === 'number') { lat = ex.latitude; lon = ex.longitude; }
+      }
+      const rin = inTrip({ t }, trip);
+      let src = lat != null ? 'exif' : 'none';
+      if (rin && lat == null) { const q = posAt(trip.points, t); if (q) { lat = q.lat; lon = q.lon; src = 'track'; } }
+      if (!rin) extra++;
+      const meta = { t, lat, lon, src };
+      if (isVideo) await importVideo(file, trip, meta); else await importPhoto(file, trip, meta);
+      added++;
+    } catch (e) { console.error(e); failed++; }
   }
-  toast(`${added}枚を追加` + (skipped ? `／走行時間外 ${skipped}枚は除外` : '') + (failed ? `／${failed}枚は読み込めず` : ''), 4500);
+  toast(`${added}件を追加` + (extra ? `（走行外・日時不明 ${extra}件は最後に表示）` : '') + (big ? `／大きすぎる動画 ${big}件は除外` : '') + (failed ? `／${failed}件は読み込めず` : ''), 5000);
   await renderPhotos();
 }
 async function renderPhotos() {
   const trip = S.detail;
   S.thumbURLs.forEach(u => URL.revokeObjectURL(u)); S.thumbURLs = [];
-  S.photos = (await photosOf(trip.id)).sort((a, b) => (a.t ?? 9e15) - (b.t ?? 9e15));
+  S.photos = orderPhotos(await photosOf(trip.id), trip);
   const g = $('#photoGrid');
-  g.innerHTML = S.photos.length ? '' : '<div class="empty" style="grid-column:1/-1">写真はまだありません</div>';
+  g.innerHTML = S.photos.length ? '' : '<div class="empty" style="grid-column:1/-1">写真・動画はまだありません</div>';
+  const extras = S.photos.filter(p => !inTrip(p, trip));
+  let headerDone = false;
   for (const p of S.photos) {
     const u = URL.createObjectURL(p.thumb); S.thumbURLs.push(u);
+    const rin = inTrip(p, trip);
+    if (!rin && !headerDone) { headerDone = true; const h = document.createElement('div'); h.className = 'phhead'; h.textContent = '日時なし・走行外（この順で最後に流れます。◀ ▶ で並べ替え）'; g.appendChild(h); }
     const d = document.createElement('div'); d.className = 'ph';
-    d.innerHTML = `<img src="${u}" alt=""><div class="cap">${p.t ? fmtHM(p.t) : '時刻不明'}<br>${esc(p.place || (p.lat != null ? '' : '位置不明'))}</div>
-      ${p.lat == null ? '<span class="warn">位置なし</span>' : ''}<button class="x" title="削除">✕</button>`;
-    d.querySelector('.x').onclick = async () => { if (await ask('この写真を外しますか？', '外す', true)) { await idbDel('photos', p.id); renderPhotos(); } };
+    const badge = !rin ? '<span class="warn" style="background:rgba(90,100,115,.9)">追加分</span>' : p.lat == null ? '<span class="warn">位置なし</span>' : '';
+    d.innerHTML = `<img src="${u}" alt="">${p.kind === 'video' ? `<span class="vbadge">▶ ${fmtDur(p.dur || 0)}</span>` : ''}
+      <div class="cap">${rin ? fmtHM(p.t) + '<br>' + esc(p.place || '') : '日時なし'}</div>${badge}<button class="x" title="削除">✕</button>
+      ${!rin ? `<div class="mv"><button data-mv="-1" ${extras[0] === p ? 'disabled' : ''}>◀</button><button data-mv="1" ${extras.at(-1) === p ? 'disabled' : ''}>▶</button></div>` : ''}`;
+    d.querySelectorAll('[data-mv]').forEach(btn => btn.onclick = () => moveExtra(p, +btn.dataset.mv));
+    d.querySelector('.x').onclick = async () => { if (await ask(`この${p.kind === 'video' ? '動画' : '写真'}を外しますか？`, '外す', true)) { await idbDel('photos', p.id); renderPhotos(); } };
     g.appendChild(d);
   }
   drawPhotoMarkers();
+}
+// 日時なし分の並べ替え：順番を振り直して保存
+async function moveExtra(p, dir) {
+  const ex = S.photos.filter(x => !inTrip(x));
+  const i = ex.indexOf(p), j = i + dir;
+  if (i < 0 || j < 0 || j >= ex.length) return;
+  [ex[i], ex[j]] = [ex[j], ex[i]];
+  for (let k = 0; k < ex.length; k++) { if (ex[k].order !== k + 1) { ex[k].order = k + 1; await idbPut('photos', ex[k]); } }
+  await renderPhotos();
 }
 function drawPhotoMarkers() {
   if (!S.photoLayer) return;
   S.photoLayer.clearLayers();
   S.photos.forEach((p, i) => {
-    if (p.lat == null) return;
+    if (p.lat == null || !inTrip(p)) return;
     L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: '<div class="pmark"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) })
       .bindPopup(`<img src="${S.thumbURLs[i]}" style="width:150px;border-radius:6px;display:block"><div style="margin-top:4px">${p.t ? fmtHM(p.t) : ''} ${esc(p.place || '')}</div>`)
       .addTo(S.photoLayer);
@@ -766,7 +861,7 @@ async function placeName(lat, lon) {
   return name;
 }
 async function resolvePlaces(onProgress) {
-  const need = S.photos.filter(p => p.lat != null && !p.place);
+  const need = S.photos.filter(p => p.lat != null && !p.place && inTrip(p));
   let i = 0;
   for (const p of need) {
     onProgress && onProgress(++i, need.length);
@@ -1182,7 +1277,7 @@ async function makeSummaryImage() {
     ctx.fillStyle = 'rgba(8,12,18,.18)'; ctx.fillRect(0, 0, W, MH);
     const pp = goodPts(trip.points).map(p => bm.proj(p.lat, p.lon));
     strokePath(ctx, pp, 9, '#ff8a1f');
-    for (const ph of S.photos) if (ph.lat != null) { const [x, y] = bm.proj(ph.lat, ph.lon); dot(ctx, x, y, 9, '#ffd08a'); }
+    for (const ph of S.photos) if (ph.lat != null && inTrip(ph, trip)) { const [x, y] = bm.proj(ph.lat, ph.lon); dot(ctx, x, y, 9, '#ffd08a'); }
     if (pp.length) { dot(ctx, pp[0][0], pp[0][1], 16, '#1f9d55'); dot(ctx, pp.at(-1)[0], pp.at(-1)[1], 16, '#d64545'); }
     const fade = ctx.createLinearGradient(0, MH - 220, 0, MH); fade.addColorStop(0, 'rgba(11,15,21,0)'); fade.addColorStop(1, '#0b0f15'); ctx.fillStyle = fade; ctx.fillRect(0, MH - 220, W, 220);
     const st = trip.stats, es = trip.elev ? elevStats(trip.elev.pts) : null, eco = await tripEconomy(trip);
@@ -1261,7 +1356,7 @@ async function restoreBackup(file) {
     const part = async (o, type) => new Blob([await file.slice(base + o.off, base + o.off + o.len).arrayBuffer()], { type });
     let i = 0;
     for (const t of man.trips) await idbPut('trips', t.status === 'active' ? { ...t, status: 'done', end: t.end || (t.points.at(-1) || { t: t.start }).t } : t);
-    for (const p of man.photos) { toast(`復元中… 写真 ${++i}/${man.photos.length}`, 60000); const { b, th, ...meta } = p; meta.blob = await part(b, 'image/jpeg'); meta.thumb = await part(th, 'image/jpeg'); await idbPut('photos', meta); }
+    for (const p of man.photos) { toast(`復元中… 写真 ${++i}/${man.photos.length}`, 60000); const { b, th, ...meta } = p; meta.blob = await part(b, meta.mime || 'image/jpeg'); meta.thumb = await part(th, 'image/jpeg'); await idbPut('photos', meta); }
     for (const m of man.music) { const { b, ...meta } = m; meta.blob = await part(b, m.type || 'audio/mpeg'); await idbPut('music', meta); }
     toast('復元しました', 3000); renderHome();
   } catch (e) { console.error(e); toast('復元できませんでした'); }
@@ -1445,8 +1540,12 @@ const xfOf = s => Math.min(.8, s.dur * .3); // 切り替え（クロスフェー
 
 function buildSlides() {
   const trip = S.detail, D = +$('#ssDur').value;
+  const VMAX = +$('#ssVid').value;
   const slides = [{ type: 'title', dur: 4.5 }];
-  for (const p of S.photos) slides.push({ type: 'photo', dur: D, p });
+  for (const p of S.photos) {
+    const dur = p.kind === 'video' ? Math.max(1.5, Math.min(VMAX, (p.dur || D) - .1)) : D;
+    slides.push({ type: 'photo', dur, p, rin: inTrip(p, trip), video: p.kind === 'video' });
+  }
   slides.push({ type: 'end', dur: 5.5 });
   let t = 0; for (const s of slides) { s.t0 = t; t += s.dur; }
   P.slides = slides; P.total = t;
@@ -1472,6 +1571,7 @@ async function prepareMaps() {
   }
   for (const s of P.slides) if (s.type === 'photo') {
     const p = s.p;
+    if (!s.rin) { s.mpos = null; continue; }
     s.mi = p.t != null ? idxAt(P.mini.pp, p.t) : P.mini.pp.length - 1;
     s.mpos = p.lat != null ? P.mini.proj(p.lat, p.lon) : (P.mini.pp[s.mi] || null);
   }
@@ -1482,15 +1582,46 @@ function needed(t) {
   for (let k = i; k <= i + 4 && k < P.slides.length; k++) if (P.slides[k].type === 'photo') ids.push(P.slides[k].p.id);
   return ids;
 }
+// 動画は <video> を用意し、先頭フレームが出せる状態になったら準備完了
+function loadVideo(p) {
+  return new Promise(res => {
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+    v._url = URL.createObjectURL(p.blob); let done = false;
+    const ok = () => { if (done) return; done = true; clearTimeout(to); res(v); };
+    const to = setTimeout(() => { done = true; res(v.readyState >= 2 ? v : null); }, 12000);
+    v.onloadeddata = () => { try { v.currentTime = 0.05; } catch { ok(); } };
+    v.onseeked = ok; v.onerror = () => { if (!done) { done = true; clearTimeout(to); res(null); } };
+    v.src = v._url; v.load();
+  });
+}
+function freeMedia(id, m) { try { if (m instanceof HTMLVideoElement) { m.pause(); URL.revokeObjectURL(m._url); m.removeAttribute('src'); m.load(); } else if (m) m.close(); } catch {} P.cache.delete(id); }
 function ensureLoaded(t) {
   const ids = needed(t);
   for (const id of ids) if (!P.cache.has(id) && !P.loading.has(id)) {
     P.loading.add(id);
     const p = S.photos.find(x => x.id === id);
-    createImageBitmap(p.blob).then(bm => P.cache.set(id, bm)).catch(() => P.cache.set(id, null)).finally(() => P.loading.delete(id));
+    const job = p.kind === 'video' ? loadVideo(p) : createImageBitmap(p.blob);
+    job.then(m => P.cache.set(id, m)).catch(() => P.cache.set(id, null)).finally(() => P.loading.delete(id));
   }
-  if (P.cache.size > 8) for (const [id, bm] of [...P.cache]) if (!ids.includes(id)) { try { bm && bm.close(); } catch {} P.cache.delete(id); }
+  if (P.cache.size > 8) for (const [id, m] of [...P.cache]) if (!ids.includes(id)) freeMedia(id, m);
   return ids.slice(0, 2).every(id => P.cache.has(id));
+}
+// 再生位置に合わせて動画を再生/停止（BGMを使うので動画の音は消す）
+function syncVideos(t, run) {
+  const i = slideIndex(t);
+  for (const [id, m] of P.cache) {
+    if (!(m instanceof HTMLVideoElement)) continue;
+    const k = P.slides.findIndex(s => s.p && s.p.id === id), s = P.slides[k];
+    const local = s ? t - s.t0 : -1;
+    const active = s && (k === i || (k === i + 1 && local > -xfOf(P.slides[i]))) && local >= 0;
+    if (active && run) {
+      if (Math.abs(m.currentTime - local) > .35) { try { m.currentTime = Math.min(local, (m.duration || local) - .05); } catch {} }
+      if (m.paused) m.play().catch(() => {});
+    } else {
+      if (!m.paused) m.pause();
+      if (s && local < 0 && m.currentTime > .1) { try { m.currentTime = .05; } catch {} }
+    }
+  }
 }
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function wrapText(ctx, text, x, y, maxW, lh, maxLines, ellipsis = false) {
@@ -1520,7 +1651,7 @@ function drawTitle(ctx, W, H, local, dur) {
   if (pp.length > 1) {
     dot(ctx, pp[0][0], pp[0][1], u * 1.5, '#1f9d55');
     const tNow = pp[Math.min(upto, pp.length) - 1][2];
-    for (const ph of S.photos) if (ph.lat != null && ph.t <= tNow) { const [x, y] = P.big.proj(ph.lat, ph.lon); dot(ctx, x, y, u * .9, '#ffd08a'); }
+    for (const ph of S.photos) if (ph.lat != null && inTrip(ph, trip) && ph.t <= tNow) { const [x, y] = P.big.proj(ph.lat, ph.lon); dot(ctx, x, y, u * .9, '#ffd08a'); }
     const e = pp[Math.min(upto, pp.length) - 1]; dot(ctx, e[0], e[1], u * 1.3, prog >= 1 ? '#d64545' : '#ff8a1f');
   }
   // 文字の下地
@@ -1565,8 +1696,9 @@ function drawPhoto(ctx, W, H, s, local) {
   const bm = P.cache.get(s.p.id);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   if (!bm) return;
-  const xf = xfOf(s), prog = Math.min(1, Math.max(0, (local + xf) / (s.dur + xf)));
-  const iw = bm.width, ih = bm.height, similar = Math.abs(Math.log((iw / ih) / (W / H))) < .25;
+  const isV = bm instanceof HTMLVideoElement;
+  const xf = xfOf(s), prog = isV ? .5 : Math.min(1, Math.max(0, (local + xf) / (s.dur + xf)));
+  const iw = isV ? (bm.videoWidth || 16) : bm.width, ih = isV ? (bm.videoHeight || 9) : bm.height, similar = Math.abs(Math.log((iw / ih) / (W / H))) < .25;
   if (!similar) {
     const sc = Math.max(W / iw, H / ih) * 1.1;
     ctx.save();
@@ -1575,11 +1707,12 @@ function drawPhoto(ctx, W, H, s, local) {
     ctx.restore();
   }
   const base = similar ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
-  const sc = base * (1 + .07 * prog), w = iw * sc, h = ih * sc;
+  const sc = base * (isV ? 1 : 1 + .07 * prog), w = iw * sc, h = ih * sc;
   const dir = (s.t0 * 7) % 2 < 1 ? 1 : -1;
-  const dx = similar ? (w - W) / 2 * .6 * (prog - .5) * dir : 0;
+  const dx = similar && !isV ? (w - W) / 2 * .6 * (prog - .5) * dir : 0;
   ctx.drawImage(bm, (W - w) / 2 + dx, (H - h) / 2, w, h);
-  // 右下：撮影日時・地名＋ミニ地図
+  // 右下：撮影日時・地名＋ミニ地図（走行外・日時不明の追加分は表示しない）
+  if (!s.rin) return;
   const u = Math.min(W, H) / 100;
   const l1 = s.p.t ? `${fmtDate(s.p.t)} ${fmtHM(s.p.t)}` : '', l2 = s.p.place || '';
   const f1 = u * 3.4, f2 = u * 2.9, padX = u * 2, padY = u * 1.5, gap = u * .9;
@@ -1637,12 +1770,13 @@ function loop(ts) {
   const ready = ensureLoaded(P.t);
   if (ready) { if (P.stalled) { P.stalled = false; AU.ctx && AU.ctx.resume(); } P.t += dt; }
   else if (!P.stalled) { P.stalled = true; AU.ctx && AU.ctx.suspend(); } // 写真の読み込み待ちの間は音も止めて同期を保つ
+  syncVideos(P.t, ready);
   try { renderAt(Math.min(P.t, P.total - .001)); } catch (e) { console.error(e); }
-  if (P.t >= P.total) { P.playing = false; audioStop(); $('#pPlay').textContent = '▶'; if (P.onEnd) { const f = P.onEnd; P.onEnd = null; f(); } return; }
+  if (P.t >= P.total) { P.playing = false; audioStop(); syncVideos(P.t, false); $('#pPlay').textContent = '▶'; if (P.onEnd) { const f = P.onEnd; P.onEnd = null; f(); } return; }
   requestAnimationFrame(loop);
 }
 function play() { P.playing = true; P.last = 0; P.stalled = false; if (AU.ctx) AU.ctx.resume(); audioStart(P.t); $('#pPlay').textContent = '⏸'; requestAnimationFrame(loop); }
-function pause() { P.playing = false; audioStop(); $('#pPlay').textContent = '▶'; }
+function pause() { P.playing = false; audioStop(); syncVideos(P.t, false); $('#pPlay').textContent = '▶'; }
 async function openPlayer() {
   if (!S.detail) return;
   const ac = audioCtx(); if (ac) ac.resume().catch(() => {}); // iOSはタップの直後に音声を有効化する必要がある
@@ -1655,14 +1789,14 @@ async function openPlayer() {
     btn.textContent = 'BGMを準備中…'; store.set('bgm', $('#ssBgm').value); await chooseTrack();
   } catch (e) { console.error(e); toast('スライドショーの準備でエラーが起きました'); }
   finally { btn.disabled = false; btn.textContent = '▶ スライドショー'; }
-  P.cache.forEach(b => { try { b && b.close(); } catch {} }); P.cache.clear();
+  [...P.cache].forEach(([id, m]) => freeMedia(id, m));
   P.t = 0;
   $('#pMute').textContent = AU.muted ? '🔇' : '🔊';
   $('#player').classList.add('on');
   play();
 }
 function closePlayer() {
-  pause(); if (P.rec && P.rec.state === 'recording') { P.cancelRec = true; P.rec.stop(); }
+  pause(); [...P.cache].forEach(([id, m]) => freeMedia(id, m)); if (P.rec && P.rec.state === 'recording') { P.cancelRec = true; P.rec.stop(); }
   $('#player').classList.remove('on');
 }
 async function shuffleBgm() {
@@ -1762,10 +1896,9 @@ $('#setRest').value = store.get('restMin', '3');
 $('#setRest').onchange = e => { store.set('restMin', e.target.value); renderHome(); };
 
 if (NATIVE) {
-  $('#btnLib').style.display = ''; $('#lblAdd').classList.remove('acc'); $('#lblAdd').firstChild.textContent = '＋ 手動で選ぶ';
+  $('#btnLib').style.display = ''; $('#lblAdd').classList.remove('acc'); $('#lblAdd').firstChild.textContent = '＋ 手動で選ぶ（写真・動画）';
   $('#liveCam').parentElement.style.display = 'none';
-  $('#chkOut').parentElement.style.display = 'none';
-  document.querySelector('#detail .muted[style*="margin:0 0 10px"]').textContent = '走行中にiPhoneのカメラで撮った写真は、終了時に自動で取り込みます。';
+  document.querySelector('#detail .muted[style*="margin:0 0 10px"]').textContent = '走行中にiPhoneで撮った写真は終了時に自動で取り込み、時刻順に並べます。「手動で選ぶ」から他の機器の写真・動画も日時を問わず追加でき、走行外・日時不明のものは最後に（日時・地図なしで）流れます。';
   document.querySelector('#home p.muted').textContent = '記録中に地図アプリや音楽アプリに切り替えても、バックグラウンドで記録を続けます。';
 }
 $('#btnLib').onclick = () => collectFromLibrary(false);
