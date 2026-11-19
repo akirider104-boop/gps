@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="vendor/leaflet.css">
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/exifr.lite.js"></script>
+<script src="vendor/capacitor.js"></script>
 <style>
 :root{
   --bg:#0b0f15; --panel:#151c26; --panel2:#1d2633; --line:#2a3544;
@@ -225,11 +226,19 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
 'use strict';
 /* ================= native (iPhoneアプリ版) ================= */
 const CAP = window.Capacitor;
-const NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
-const BG = NATIVE ? CAP.registerPlugin('BackgroundGeolocation') : null;
-const FS = NATIVE ? CAP.registerPlugin('Filesystem') : null;
-const SHARE = NATIVE ? CAP.registerPlugin('Share') : null;
-const RP = NATIVE ? CAP.registerPlugin('RidePhotos') : null;
+let NATIVE = false;
+try { NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform()); } catch {}
+function capPlugin(name) {
+  try { if (CAP.registerPlugin) return CAP.registerPlugin(name); } catch {}
+  // 予備：ネイティブブリッジを直接呼ぶ
+  return new Proxy({}, { get: (_, m) => m === 'addWatcher'
+    ? (opts, cb) => Promise.resolve(CAP.nativeCallback(name, m, opts, (res, err) => cb(res, err)))
+    : (opts = {}) => CAP.nativePromise(name, m, opts) });
+}
+const BG = NATIVE ? capPlugin('BackgroundGeolocation') : null;
+const FS = NATIVE ? capPlugin('Filesystem') : null;
+const SHARE = NATIVE ? capPlugin('Share') : null;
+const RP = NATIVE ? capPlugin('RidePhotos') : null;
 function blobToB64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
 async function b64ToBlob(b64, type = 'image/jpeg') { return (await fetch(`data:${type};base64,${b64}`)).blob(); }
 async function writeCache(file) { const { uri } = await FS.writeFile({ path: file.name, data: await blobToB64(file), directory: 'CACHE' }); return uri; }
