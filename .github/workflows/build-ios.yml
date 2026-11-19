@@ -1,0 +1,26 @@
+# Mac が無い場合用：GitHub のクラウド Mac で未署名の .ipa を作る
+# Actions タブ →「Build iOS (unsigned ipa)」→「Run workflow」
+name: Build iOS (unsigned ipa)
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Select newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XC"; sudo xcode-select -s "$XC"; xcodebuild -version
+      - run: npm install
+      - run: npx cap sync ios
+      - name: Build
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry RideLog-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: RideLog-ipa, path: RideLog-unsigned.ipa }

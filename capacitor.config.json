@@ -1,0 +1,6 @@
+{
+  "appId": "jp.ridelog.app",
+  "appName": "RideLog",
+  "webDir": "www",
+  "ios": { "contentInset": "never", "backgroundColor": "#0b0f15" }
+}

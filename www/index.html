@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f15">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RideLog">
+<title>Ride Logger</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/exifr.lite.js"></script>
+<style>
+:root{
+  --bg:#0b0f15; --panel:#151c26; --panel2:#1d2633; --line:#2a3544;
+  --text:#eef2f6; --sub:#8f9cad; --acc:#ff8a1f; --acc2:#ffb02e; --ok:#3ecf8e; --bad:#ff5a5a;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;}
+body{overscroll-behavior:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.view{display:none;min-height:100%;padding:calc(var(--safe-t) + 12px) 16px calc(var(--safe-b) + 24px)}
+.view.on{display:block}
+h1{font-size:22px;margin:4px 0 14px;display:flex;align-items:center;gap:10px}
+h1 img{width:34px;height:34px;border-radius:9px}
+h2{font-size:16px;margin:22px 0 10px;color:var(--sub);font-weight:600}
+.muted{color:var(--sub);font-size:13px;line-height:1.6}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:12px;
+  background:var(--panel2);font-weight:600;font-size:15px}
+.btn.acc{background:linear-gradient(90deg,var(--acc),var(--acc2));color:#16100a}
+.btn.danger{background:#3a1d22;color:#ffb3b3}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+
+/* Home */
+.startwrap{display:flex;justify-content:center;padding:26px 0 8px}
+.startbtn{width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffb54a,#ff7a1a 60%,#e35f00);
+  color:#1b1006;font-size:30px;font-weight:800;letter-spacing:.06em;
+  box-shadow:0 0 0 10px rgba(255,138,31,.12),0 0 0 22px rgba(255,138,31,.06),0 14px 40px rgba(255,120,20,.35)}
+.startbtn small{display:block;font-size:13px;font-weight:600;letter-spacing:0;margin-top:4px;opacity:.75}
+.trip{display:flex;gap:12px;align-items:center;padding:12px;border-radius:14px;background:var(--panel);
+  border:1px solid var(--line);margin-bottom:10px;width:100%;text-align:left}
+.trip .ic{width:42px;height:42px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;flex:none;font-size:20px}
+.trip .t1{font-weight:700;font-size:15px}
+.trip .t2{color:var(--sub);font-size:12.5px;margin-top:2px}
+.settings{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub)}
+select,input[type=text]{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:14px}
+
+/* Live */
+#live{padding:0}
+#liveMap{position:fixed;inset:0 0 auto 0;height:44vh;z-index:1}
+.livepanel{position:fixed;left:0;right:0;bottom:0;top:calc(44vh - 18px);z-index:2;background:var(--bg);
+  border-radius:18px 18px 0 0;padding:14px 16px calc(var(--safe-b) + 14px);display:flex;flex-direction:column}
+.gps{display:flex;justify-content:space-between;font-size:12.5px;color:var(--sub)}
+.gps b{font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:1px}
+.dot.ok{background:var(--ok)} .dot.mid{background:var(--acc2)}
+.speed{text-align:center;margin:4px 0 6px}
+.speed .v{font-size:72px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.speed .u{color:var(--sub);font-size:14px;margin-left:4px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px}
+.stat .k{font-size:11.5px;color:var(--sub)}
+.stat .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap}
+.stat .v small{font-size:11px;color:var(--sub);font-weight:600;margin-left:2px}
+.livebtns{margin-top:auto;display:flex;gap:10px;padding-top:12px}
+.livebtns .btn{flex:1;padding:16px}
+.stopbtn{background:#2b1418;color:#ff8f8f;border:2px solid #ff5a5a;font-size:18px;font-weight:800}
+.recenter{position:fixed;right:12px;top:calc(44vh - 70px);z-index:3;background:var(--panel);border:1px solid var(--line);
+  width:42px;height:42px;border-radius:12px;font-size:18px}
+.badge{position:fixed;left:12px;top:calc(var(--safe-t) + 10px);z-index:3;background:rgba(11,15,21,.85);
+  border-radius:20px;padding:6px 12px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+.badge .rec{width:9px;height:9px;border-radius:50%;background:var(--bad);animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* Detail */
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.topbar .btn{padding:8px 12px}
+#detMap{height:42vh;border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+.legend{display:flex;gap:10px;font-size:11px;color:var(--sub);margin:6px 2px 0;flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:4px;vertical-align:2px}
+.name{width:100%;font-size:17px;font-weight:700;background:transparent;border:0;border-bottom:1px dashed var(--line);border-radius:0;padding:4px 0;margin:2px 0 6px}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--panel2)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .cap{position:absolute;right:0;bottom:0;left:0;padding:14px 5px 4px;font-size:10px;text-align:right;
+  background:linear-gradient(transparent,rgba(0,0,0,.75));line-height:1.3}
+.ph .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.6);font-size:13px}
+.ph .warn{position:absolute;top:4px;left:4px;font-size:10px;background:rgba(255,90,90,.85);border-radius:6px;padding:1px 5px}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;font-size:100px}
+
+/* Player */
+#player{position:fixed;inset:0;z-index:50;background:#000;display:none;flex-direction:column}
+#player.on{display:flex}
+#stage{flex:1;width:100%;min-height:0;object-fit:contain;display:block}
+.pctl{display:flex;gap:8px;padding:10px 12px calc(var(--safe-b) + 12px);background:#0b0f15;align-items:center;flex-wrap:wrap}
+.pctl .btn{padding:10px 12px;font-size:14px}
+.prog{height:4px;background:#222;width:100%}
+.prog i{display:block;height:100%;width:0;background:var(--acc)}
+
+/* Modal / toast */
+.modal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center}
+.modal.on{display:flex}
+.sheet{background:var(--panel);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px 18px calc(var(--safe-b) + 18px)}
+.sheet p{margin:0 0 16px;line-height:1.6}
+.sheet .row .btn{flex:1}
+.sheet video{width:100%;border-radius:12px;max-height:50vh;background:#000;margin-bottom:12px}
+#toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 24px);transform:translateX(-50%);z-index:90;
+  background:#26303d;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;display:none;max-width:90vw;text-align:center}
+.leaflet-container{background:#0f141b}
+.pmark{width:14px;height:14px;border-radius:50%;background:var(--acc2);border:2px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+.me{width:18px;height:18px;border-radius:50%;background:#2f8cff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,140,255,.25)}
+.empty{text-align:center;color:var(--sub);padding:24px 0;font-size:14px}
+</style>
+</head>
+<body>
+
+<!-- ===== Home ===== -->
+<section id="home" class="view on">
+  <h1><img src="icon-192.png" alt="">Ride Logger</h1>
+  <div class="startwrap"><button class="startbtn" id="btnStart">START<small>記録を開始</small></button></div>
+  <p class="muted" style="text-align:center;margin:14px 0 0">記録中は画面をつけたまま、アプリを表示した状態にしてください。<br>スマホホルダー＋充電がおすすめです。</p>
+  <h2>走行履歴</h2>
+  <div id="tripList"></div>
+  <h2>設定</h2>
+  <div class="card">
+    <div class="settings">休憩とみなす停止時間
+      <select id="setRest"><option value="2">2分以上</option><option value="3">3分以上</option><option value="5">5分以上</option><option value="10">10分以上</option></select>
+    </div>
+    <p class="muted" style="margin:10px 0 0" id="installHint"></p>
+  </div>
+</section>
+
+<!-- ===== Live ===== -->
+<section id="live" class="view">
+  <div id="liveMap"></div>
+  <div class="badge"><span class="rec"></span><span id="liveClock">0:00</span></div>
+  <button class="recenter" id="btnRecenter" title="現在地に戻る">◎</button>
+  <div class="livepanel">
+    <div class="gps"><span><span class="dot" id="gpsDot"></span><b id="gpsText">GPS待機中…</b></span><span id="wakeText"></span></div>
+    <div class="speed"><span class="v" id="lvSpeed">0</span><span class="u">km/h</span></div>
+    <div class="grid">
+      <div class="stat"><div class="k">移動距離</div><div class="v" id="lvDist">0.0<small>km</small></div></div>
+      <div class="stat"><div class="k">最高速度</div><div class="v" id="lvMax">0<small>km/h</small></div></div>
+      <div class="stat"><div class="k">平均速度</div><div class="v" id="lvAvg">0<small>km/h</small></div></div>
+      <div class="stat"><div class="k">総時間</div><div class="v" id="lvTotal">0:00</div></div>
+      <div class="stat"><div class="k">走行時間</div><div class="v" id="lvMove">0:00</div></div>
+      <div class="stat"><div class="k">休憩時間</div><div class="v" id="lvRest">0:00</div></div>
+    </div>
+    <div class="livebtns">
+      <label class="btn filebtn" style="flex:.6">📷 撮影<input type="file" accept="image/*" capture="environment" id="liveCam"></label>
+      <button class="btn stopbtn" id="btnStop">■ 終了</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Detail ===== -->
+<section id="detail" class="view">
+  <div class="topbar">
+    <button class="btn" id="btnBack">‹ 戻る</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="btnGpx">GPX</button>
+    <button class="btn danger" id="btnDel">削除</button>
+  </div>
+  <input class="name" id="detName" type="text">
+  <div class="muted" id="detWhen"></div>
+  <div id="detMap" style="margin-top:10px"></div>
+  <div class="legend" id="legend"></div>
+  <div class="grid" style="margin-top:12px">
+    <div class="stat"><div class="k">移動距離</div><div class="v" id="dDist"></div></div>
+    <div class="stat"><div class="k">最高速度</div><div class="v" id="dMax"></div></div>
+    <div class="stat"><div class="k">平均速度</div><div class="v" id="dAvg"></div></div>
+    <div class="stat"><div class="k">総時間</div><div class="v" id="dTotal"></div></div>
+    <div class="stat"><div class="k">走行時間</div><div class="v" id="dMove"></div></div>
+    <div class="stat"><div class="k">休憩時間</div><div class="v" id="dRest"></div></div>
+  </div>
+  <p class="muted" style="margin:6px 2px 0">平均速度は休憩を除いた走行中の平均です。</p>
+
+  <h2>写真とスライドショー</h2>
+  <div class="row" style="margin-bottom:10px">
+    <button class="btn acc" id="btnLib" style="display:none">📷 カメラロールから取り込み</button>
+    <label class="btn acc filebtn" id="lblAdd">＋ 写真を追加<input type="file" accept="image/*" multiple id="addPhotos"></label>
+    <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="chkOut">時間外の写真も入れる</label>
+  </div>
+  <p class="muted" style="margin:0 0 10px">走行中にカメラで撮った写真をまとめて選んでください。撮影時刻で今回の走行分だけを自動で取り込みます。</p>
+  <div class="photos" id="photoGrid"></div>
+  <div class="card" style="margin-top:14px">
+    <div class="row">
+      <select id="ssAspect"><option value="h">横 16:9</option><option value="v">縦 9:16</option></select>
+      <select id="ssDur"><option value="3">1枚 3秒</option><option value="4" selected>1枚 4秒</option><option value="5">1枚 5秒</option></select>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn acc" id="btnPlay" style="flex:1">▶ スライドショー</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Player ===== -->
+<div id="player">
+  <canvas id="stage"></canvas>
+  <div class="prog"><i id="progBar"></i></div>
+  <div class="pctl">
+    <button class="btn" id="pPlay">⏸</button>
+    <button class="btn" id="pRestart">⟲ 最初から</button>
+    <span style="flex:1"></span>
+    <button class="btn acc" id="pRec">⬇ 動画に保存</button>
+    <button class="btn" id="pClose">✕</button>
+  </div>
+</div>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ================= native (iPhoneアプリ版) ================= */
+const CAP = window.Capacitor;
+const NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const BG = NATIVE ? CAP.registerPlugin('BackgroundGeolocation') : null;
+const FS = NATIVE ? CAP.registerPlugin('Filesystem') : null;
+const SHARE = NATIVE ? CAP.registerPlugin('Share') : null;
+const RP = NATIVE ? CAP.registerPlugin('RidePhotos') : null;
+function blobToB64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+async function b64ToBlob(b64, type = 'image/jpeg') { return (await fetch(`data:${type};base64,${b64}`)).blob(); }
+async function writeCache(file) { const { uri } = await FS.writeFile({ path: file.name, data: await blobToB64(file), directory: 'CACHE' }); return uri; }
+
+/* ================= utilities ================= */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const WD = '日月火水木金土';
+const fmtDate = t => { const d = new Date(t); return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}(${WD[d.getDay()]})`; };
+const fmtHM = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const fmtDur = sec => { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60; return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; };
+const fmtDurJ = sec => { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec/3600), m = Math.round(sec%3600/60); return h ? `${h}時間${m}分` : `${m}分`; };
+const kmh = ms => ms * 3.6;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function hav(a, b) {
+  const R = 6371000, r = Math.PI/180;
+  const dLat = (b.lat-a.lat)*r, dLon = (b.lon-a.lon)*r;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(x)));
+}
+function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', ms); }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function sheet(html) { $('#sheet').innerHTML = html; $('#modal').classList.add('on'); }
+function closeSheet() { $('#modal').classList.remove('on'); }
+function ask(msg, okLabel = 'OK', danger = false) {
+  return new Promise(res => {
+    sheet(`<p>${msg}</p><div class="row"><button class="btn" data-a="0">キャンセル</button><button class="btn ${danger ? 'danger' : 'acc'}" data-a="1">${okLabel}</button></div>`);
+    $('#sheet').onclick = e => { const a = e.target.closest('[data-a]'); if (!a) return; closeSheet(); $('#sheet').onclick = null; res(a.dataset.a === '1'); };
+  });
+}
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+
+/* ================= IndexedDB ================= */
+let _db;
+function db() {
+  if (_db) return _db;
+  _db = new Promise((res, rej) => {
+    const r = indexedDB.open('ride-logger', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore('trips', { keyPath: 'id' });
+      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return _db;
+}
+async function tx(name, mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const t = d.transaction(name, mode); let out;
+    const r = fn(t.objectStore(name)); if (r) r.onsuccess = () => out = r.result;
+    t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+  });
+}
+const idbPut = (s, v) => tx(s, 'readwrite', o => o.put(v));
+const idbGet = (s, k) => tx(s, 'readonly', o => o.get(k));
+const idbAll = s => tx(s, 'readonly', o => o.getAll());
+const idbDel = (s, k) => tx(s, 'readwrite', o => o.delete(k));
+const photosOf = id => tx('photos', 'readonly', o => o.index('trip').getAll(id));
+
+/* ================= statistics ================= */
+function restSec() { return (+store.get('restMin', 3) || 3) * 60; }
+/*
+ * points: {t, lat, lon, acc(m), spd(m/s|null)}
+ * - 距離: 測位誤差以上動いた区間だけ加算（停車中のGPSのブレを除外）
+ * - 最高速度: GPSのドップラー速度を優先、無い端末は区間速度
+ * - 休憩: 半径50m以内に設定時間以上とどまった時間
+ */
+function computeStats(pts, start, end) {
+  const REST = restSec(), R = 50, VMAX = 300/3.6;
+  let dist = 0, max = 0, rest = 0;
+  let dA = null, cA = null, cLast = null, vRef = null;
+  const restSpans = [];
+  for (const p of pts) {
+    if (p.acc > 50) continue;
+    if (p.spd != null && p.acc <= 25 && p.spd < VMAX) max = Math.max(max, p.spd);
+    if (p.spd == null && p.acc <= 25) { // 速度を出さない端末: 4〜20秒間隔の区間速度
+      if (!vRef) vRef = p;
+      else { const vdt = (p.t - vRef.t) / 1000; if (vdt >= 4) { if (vdt <= 20) { const v = hav(vRef, p) / vdt; if (v < VMAX) max = Math.max(max, v); } vRef = p; } }
+    }
+    if (!dA) { dA = cA = cLast = p; continue; }
+    const d = hav(dA, p), dt = (p.t - dA.t) / 1000;
+    if (d >= Math.max(8, Math.min(p.acc, 25)) && dt > 0) {
+      const moving = p.spd != null ? p.spd > 0.7 : d / dt >= 1;
+      if (moving) {
+        dist += d;
+        dA = p;
+      }
+    }
+    if (hav(cA, p) > R) {
+      const dur = (cLast.t - cA.t) / 1000;
+      if (dur >= REST) { rest += dur; restSpans.push({ from: cA.t, to: cLast.t, lat: cA.lat, lon: cA.lon }); }
+      cA = cLast = p;
+    } else cLast = p;
+  }
+  if (cA) {
+    const tailEnd = (end - cLast.t) < 120000 ? end : cLast.t;
+    const dur = (tailEnd - cA.t) / 1000;
+    if (dur >= REST) { rest += dur; restSpans.push({ from: cA.t, to: tailEnd, lat: cA.lat, lon: cA.lon }); }
+  }
+  const total = Math.max(0, (end - start) / 1000);
+  rest = Math.min(rest, total);
+  const moving = Math.max(0, total - rest);
+  return { dist, max, rest, total, moving, avg: moving > 0 ? dist / moving : 0, restSpans };
+}
+// 撮影時刻から位置を推定（最も近い測位点、10分以内）
+function posAt(pts, t) {
+  if (!pts.length || t == null) return null;
+  let lo = 0, hi = pts.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (pts[m].t < t) lo = m + 1; else hi = m; }
+  const cand = [pts[lo], pts[lo-1]].filter(Boolean).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+  return Math.abs(cand.t - t) <= 600000 ? { lat: cand.lat, lon: cand.lon } : null;
+}
+
+/* ================= map helpers ================= */
+function makeMap(el) {
+  const gsi = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom: 19, maxNativeZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>' });
+  const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', { maxZoom: 19, maxNativeZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>' });
+  const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', { maxZoom: 19, maxNativeZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>' });
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' });
+  const map = L.map(el, { zoomControl: false, attributionControl: true, layers: [gsi] });
+  L.control.layers({ '標準地図': gsi, '淡色地図': pale, '航空写真': photo, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
+  map.setView([35.68, 139.76], 13);
+  return map;
+}
+const SPEED_BINS = [[20, '#4aa8ff'], [40, '#2ed3c6'], [60, '#46d36a'], [80, '#ffb02e'], [Infinity, '#ff4f4f']];
+const binOf = v => SPEED_BINS.findIndex(b => kmh(v) < b[0]);
+function drawTrack(map, pts, layer) {
+  const good = pts.filter(p => p.acc <= 50);
+  for (let i = 1; i < good.length;) {
+    const prev = good[i-1];
+    const sp = p => p.spd != null ? p.spd : hav(prev, p) / Math.max(1, (p.t - prev.t) / 1000);
+    const b = binOf(sp(good[i]));
+    const seg = [[prev.lat, prev.lon]];
+    while (i < good.length && binOf(good[i].spd != null ? good[i].spd : hav(good[i-1], good[i]) / Math.max(1, (good[i].t - good[i-1].t) / 1000)) === b) { seg.push([good[i].lat, good[i].lon]); i++; }
+    if (seg.length === 1 && i < good.length) { seg.push([good[i].lat, good[i].lon]); i++; }
+    L.polyline(seg, { color: SPEED_BINS[b][1], weight: 5, opacity: .95 }).addTo(layer);
+  }
+}
+
+/* ================= state ================= */
+const S = { trip: null, watchId: null, wake: null, lastFix: null, liveMap: null, livePoly: null, liveMe: null, follow: true, saveT: 0, tick: null,
+  detail: null, detMap: null, detLayer: null, photos: [], thumbURLs: [] };
+
+function show(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === id));
+  window.scrollTo(0, 0);
+}
+
+/* ================= home ================= */
+async function renderHome() {
+  show('home');
+  const trips = (await idbAll('trips')).filter(t => t.status === 'done').sort((a, b) => b.start - a.start);
+  const el = $('#tripList');
+  if (!trips.length) { el.innerHTML = '<div class="empty">まだ記録がありません</div>'; return; }
+  el.innerHTML = '';
+  for (const t of trips) {
+    const st = t.stats || computeStats(t.points, t.start, t.end);
+    const b = document.createElement('button');
+    b.className = 'trip';
+    b.innerHTML = `<div class="ic">🏍️</div><div style="flex:1;min-width:0"><div class="t1">${esc(t.name)}</div>
+      <div class="t2">${fmtDate(t.start)} ${fmtHM(t.start)}–${fmtHM(t.end)}　${(st.dist/1000).toFixed(1)} km・${fmtDurJ(st.total)}</div></div><div style="color:var(--sub)">›</div>`;
+    b.onclick = () => openTrip(t.id);
+    el.appendChild(b);
+  }
+}
+
+/* ================= live recording ================= */
+async function startTrip() {
+  if (!('geolocation' in navigator)) return toast('この端末/ブラウザでは位置情報が使えません');
+  const t = Date.now();
+  const d = new Date(t);
+  const h = d.getHours();
+  const part = h < 11 ? '朝' : h < 16 ? '昼' : '夕方';
+  S.trip = { id: 't' + t, start: t, end: null, status: 'active', name: `${d.getMonth()+1}/${d.getDate()} ${part}のツーリング`, points: [] };
+  await idbPut('trips', S.trip);
+  beginLive();
+}
+function beginLive() {
+  show('live');
+  if (!S.liveMap) {
+    S.liveMap = makeMap('liveMap');
+    S.livePoly = L.polyline([], { color: '#ff8a1f', weight: 5 }).addTo(S.liveMap);
+    S.liveMe = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) });
+    S.liveMap.on('dragstart', () => S.follow = false);
+  }
+  S.livePoly.setLatLngs(S.trip.points.filter(p => p.acc <= 50).map(p => [p.lat, p.lon]));
+  setTimeout(() => S.liveMap.invalidateSize(), 50);
+  S.follow = true;
+  if (NATIVE) {
+    // バックグラウンドでも位置を受け取る（ナビ・音楽アプリと併用可）
+    BG.addWatcher({ backgroundMessage: 'ツーリングを記録中', backgroundTitle: 'RideLog', requestPermissions: true, stale: false, distanceFilter: 0 },
+      (loc, err) => {
+        if (err) return onPosErr(err.code === 'NOT_AUTHORIZED' ? { code: 1, native: true } : { code: 2 });
+        if (loc) onPos({ timestamp: loc.time || Date.now(), coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, speed: loc.speed } });
+      }).then(id => S.watchId = id).catch(() => onPosErr({ code: 2 }));
+  } else {
+    S.watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  }
+  acquireWake();
+  clearInterval(S.tick); S.tick = setInterval(renderLive, 1000);
+  renderLive();
+}
+function onPos(pos) {
+  const c = pos.coords, t = pos.timestamp || Date.now();
+  const acc = Math.round(c.accuracy || 999);
+  const spd = (c.speed == null || isNaN(c.speed) || c.speed < 0) ? null : +c.speed.toFixed(2);
+  const p = { t, lat: +c.latitude.toFixed(6), lon: +c.longitude.toFixed(6), acc, spd };
+  S.lastFix = p;
+  const pts = S.trip.points, last = pts[pts.length - 1];
+  setGps(acc);
+  if (acc > 100) return;
+  if (last) {
+    if (t - last.t < 900) return;
+    if (hav(last, p) < 5 && t - last.t < 10000 && (spd == null || spd < 0.7)) return; // 停車中は間引く
+  }
+  pts.push(p);
+  if (acc <= 50) {
+    S.livePoly.addLatLng([p.lat, p.lon]);
+    if (!S.liveMap.hasLayer(S.liveMe)) { S.liveMe.addTo(S.liveMap); S.liveMap.setView([p.lat, p.lon], 15); }
+    S.liveMe.setLatLng([p.lat, p.lon]);
+    if (S.follow) S.liveMap.panTo([p.lat, p.lon], { animate: true });
+  }
+  if (Date.now() - S.saveT > 15000) saveLive();
+}
+function onPosErr(e) {
+  if (e.code === 1 && e.native && !S.permAsked) {
+    S.permAsked = true;
+    sheet(`<p>位置情報が許可されていません。<br>設定 →「位置情報」を<b>「このAppの使用中」</b>（または「常に」）にしてください。</p><div class="row"><button class="btn" data-a="0">閉じる</button><button class="btn acc" data-a="1">設定を開く</button></div>`);
+    $('#sheet').onclick = ev => { const a = ev.target.closest('[data-a]'); if (!a) return; closeSheet(); if (a.dataset.a === '1') BG.openSettings(); };
+  }
+  if (e.code === 1) { setGps(null, '位置情報が許可されていません（設定で許可してください）'); }
+  else setGps(null, 'GPS信号を探しています…');
+}
+function setGps(acc, msg) {
+  const dot = $('#gpsDot'), tx = $('#gpsText');
+  if (acc == null) { dot.className = 'dot'; tx.textContent = msg; return; }
+  dot.className = 'dot ' + (acc <= 20 ? 'ok' : acc <= 50 ? 'mid' : '');
+  tx.textContent = `GPS 精度 ±${acc}m`;
+}
+function saveLive() { S.saveT = Date.now(); if (S.trip) idbPut('trips', S.trip).catch(() => {}); }
+function renderLive() {
+  if (!S.trip) return;
+  const now = Date.now();
+  const st = computeStats(S.trip.points, S.trip.start, now);
+  const f = S.lastFix;
+  let cur = 0;
+  if (f && now - f.t < 6000) {
+    if (f.spd != null) cur = f.spd;
+    else { const pts = S.trip.points; if (pts.length > 1) { const a = pts[pts.length-2], b = pts[pts.length-1]; cur = hav(a, b) / Math.max(1, (b.t - a.t) / 1000); } }
+  }
+  $('#lvSpeed').textContent = Math.round(kmh(cur) < 2 ? 0 : kmh(cur));
+  $('#lvDist').innerHTML = `${(st.dist/1000).toFixed(1)}<small>km</small>`;
+  $('#lvMax').innerHTML = `${Math.round(kmh(st.max))}<small>km/h</small>`;
+  $('#lvAvg').innerHTML = `${Math.round(kmh(st.avg))}<small>km/h</small>`;
+  $('#lvTotal').textContent = fmtDur(st.total);
+  $('#lvMove').textContent = fmtDur(st.moving);
+  $('#lvRest').textContent = fmtDur(st.rest);
+  $('#liveClock').textContent = '記録中 ' + fmtDur(st.total);
+}
+async function acquireWake() {
+  if (NATIVE) { $('#wakeText').textContent = 'バックグラウンド記録OK'; return; }
+  try {
+    if ('wakeLock' in navigator) { S.wake = await navigator.wakeLock.request('screen'); $('#wakeText').textContent = '画面ON維持中'; S.wake.addEventListener('release', () => $('#wakeText').textContent = ''); }
+    else $('#wakeText').textContent = '自動ロックをOFFに';
+  } catch { $('#wakeText').textContent = '自動ロックをOFFに'; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.trip && S.trip.status === 'active') acquireWake();
+  if (document.visibilityState === 'hidden') saveLive();
+});
+window.addEventListener('pagehide', saveLive);
+
+async function stopTrip() {
+  if (!(await ask('記録を終了しますか？', '終了する', true))) return;
+  if (S.watchId != null) { if (NATIVE) BG.removeWatcher({ id: S.watchId }).catch(() => {}); else navigator.geolocation.clearWatch(S.watchId); }
+  S.watchId = null; clearInterval(S.tick);
+  try { S.wake && S.wake.release(); } catch {}
+  const t = S.trip;
+  t.end = Date.now(); t.status = 'done';
+  t.stats = computeStats(t.points, t.start, t.end);
+  await idbPut('trips', t);
+  S.trip = null;
+  await openTrip(t.id);
+  if (NATIVE) collectFromLibrary(true);
+}
+
+// 走行中のアプリ内撮影
+async function liveCapture(file) {
+  if (!file || !S.trip) return;
+  const f = S.lastFix;
+  try {
+    await importPhoto(file, S.trip, { t: Date.now(), lat: f ? f.lat : null, lon: f ? f.lon : null, src: 'live' });
+    toast('写真を保存しました（この記録に紐づけ）');
+  } catch { toast('写真を読み込めませんでした'); }
+}
+
+/* ================= photos ================= */
+function loadImg(file) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(file); const im = new Image(); im.onload = () => res({ im, u }); im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('decode')); }; im.src = u; });
+}
+async function resizeTo(im, max, q = .88) {
+  const s = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const w = Math.round(im.naturalWidth * s), h = Math.round(im.naturalHeight * s);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(im, 0, 0, w, h);
+  return new Promise(r => c.toBlob(b => r(b), 'image/jpeg', q));
+}
+async function importPhoto(file, trip, meta) {
+  const { im, u } = await loadImg(file);
+  try {
+    const blob = await resizeTo(im, 2048), thumb = await resizeTo(im, 360, .8);
+    const rec = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 7), tripId: trip.id, t: meta.t, lat: meta.lat, lon: meta.lon,
+      src: meta.src, assetId: meta.assetId || null, timeKnown: meta.timeKnown !== false, place: null, blob, thumb, w: im.naturalWidth, h: im.naturalHeight };
+    await idbPut('photos', rec);
+    return rec;
+  } finally { URL.revokeObjectURL(u); }
+}
+async function addPhotos(files) {
+  const trip = S.detail; if (!trip || !files.length) return;
+  const includeOut = $('#chkOut').checked;
+  const margin = 15 * 60000;
+  let added = 0, skipped = 0, failed = 0, i = 0;
+  for (const file of files) {
+    i++; toast(`写真を読み込み中… ${i}/${files.length}`, 60000);
+    let ex = null;
+    try { ex = window.exifr ? await exifr.parse(file) : null; } catch {}
+    const exT = ex && (ex.DateTimeOriginal || ex.CreateDate);
+    let t = exT instanceof Date && !isNaN(exT) ? exT.getTime() : null;
+    let timeKnown = t != null;
+    if (t == null && file.lastModified) t = file.lastModified;
+    const inRange = t != null && t >= trip.start - margin && t <= trip.end + margin;
+    if (!inRange && !includeOut) { skipped++; continue; }
+    let lat = ex && typeof ex.latitude === 'number' ? ex.latitude : null, lon = ex && typeof ex.longitude === 'number' ? ex.longitude : null, src = 'exif';
+    if (lat == null && inRange) { const p = posAt(trip.points, t); if (p) { lat = p.lat; lon = p.lon; src = 'track'; } }
+    if (lat == null) src = 'none';
+    try { await importPhoto(file, trip, { t, lat, lon, src, timeKnown: timeKnown && inRange ? true : timeKnown }); added++; }
+    catch { failed++; }
+  }
+  toast(`${added}枚を追加` + (skipped ? `／走行時間外 ${skipped}枚は除外` : '') + (failed ? `／${failed}枚は読み込めず` : ''), 4500);
+  await renderPhotos();
+}
+async function renderPhotos() {
+  const trip = S.detail;
+  S.thumbURLs.forEach(u => URL.revokeObjectURL(u)); S.thumbURLs = [];
+  S.photos = (await photosOf(trip.id)).sort((a, b) => (a.t ?? 9e15) - (b.t ?? 9e15));
+  const g = $('#photoGrid');
+  g.innerHTML = S.photos.length ? '' : '<div class="empty" style="grid-column:1/-1">写真はまだありません</div>';
+  for (const p of S.photos) {
+    const u = URL.createObjectURL(p.thumb); S.thumbURLs.push(u);
+    const d = document.createElement('div'); d.className = 'ph';
+    d.innerHTML = `<img src="${u}" alt=""><div class="cap">${p.t ? fmtHM(p.t) : '時刻不明'}<br>${esc(p.place || (p.lat != null ? '' : '位置不明'))}</div>
+      ${p.lat == null ? '<span class="warn">位置なし</span>' : ''}<button class="x" title="削除">✕</button>`;
+    d.querySelector('.x').onclick = async () => { if (await ask('この写真を外しますか？', '外す', true)) { await idbDel('photos', p.id); renderPhotos(); } };
+    g.appendChild(d);
+  }
+  drawPhotoMarkers();
+}
+function drawPhotoMarkers() {
+  if (!S.photoLayer) return;
+  S.photoLayer.clearLayers();
+  S.photos.forEach((p, i) => {
+    if (p.lat == null) return;
+    L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: '<div class="pmark"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) })
+      .bindPopup(`<img src="${S.thumbURLs[i]}" style="width:150px;border-radius:6px;display:block"><div style="margin-top:4px">${p.t ? fmtHM(p.t) : ''} ${esc(p.place || '')}</div>`)
+      .addTo(S.photoLayer);
+  });
+}
+
+/* ===== カメラロールから自動取り込み（iPhoneアプリ版） ===== */
+async function collectFromLibrary(auto) {
+  const trip = S.detail; if (!trip || !RP) return;
+  try {
+    const { status } = await RP.requestAccess();
+    if (status === 'denied') { toast('写真へのアクセスが許可されていません（設定 → RideLog → 写真）', 5000); return; }
+    const { photos } = await RP.listPhotos({ from: trip.start, to: trip.end });
+    const have = new Set(S.photos.map(p => p.assetId).filter(Boolean));
+    const todo = photos.filter(p => !have.has(p.id));
+    if (!todo.length) { if (!auto) toast('走行中に撮った新しい写真はありませんでした'); return; }
+    let n = 0;
+    for (const a of todo) {
+      toast(`カメラロールから取り込み中… ${++n}/${todo.length}`, 60000);
+      try {
+        const { data } = await RP.getPhoto({ id: a.id, maxSize: 2048 });
+        const blob = await b64ToBlob(data);
+        let lat = a.lat ?? null, lon = a.lon ?? null, src = 'exif';
+        if (lat == null) { const q = posAt(trip.points, a.t); if (q) { lat = q.lat; lon = q.lon; src = 'track'; } else src = 'none'; }
+        await importPhoto(blob, trip, { t: a.t, lat, lon, src, assetId: a.id });
+      } catch {}
+    }
+    toast(`走行中の写真 ${n}枚を取り込みました`, 3500);
+    await renderPhotos();
+  } catch (e) { toast('写真を取り込めませんでした'); }
+}
+
+/* ===== 大まかな地名（OpenStreetMap Nominatim, 1秒1回まで） ===== */
+const placeCache = new Map();
+async function placeName(lat, lon) {
+  const key = lat.toFixed(2) + ',' + lon.toFixed(2);
+  if (placeCache.has(key)) return placeCache.get(key);
+  let name = null;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=ja`);
+    if (r.ok) {
+      const j = await r.json(), a = j.address || {};
+      const pref = a.province || a.state || '';
+      const city = a.city || a.town || a.village || a.county || a.municipality || '';
+      const ward = a.city_district && city && !city.includes(a.city_district) ? a.city_district : '';
+      name = [pref, city + ward].filter(Boolean).join(' ') || (j.display_name || '').split(',').slice(-3, -1).reverse().join(' ').trim() || null;
+    }
+  } catch {}
+  await sleep(1100);
+  if (name) placeCache.set(key, name);
+  return name;
+}
+async function resolvePlaces(onProgress) {
+  const need = S.photos.filter(p => p.lat != null && !p.place);
+  let i = 0;
+  for (const p of need) {
+    onProgress && onProgress(++i, need.length);
+    const n = await placeName(p.lat, p.lon);
+    p.place = n || `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}`;
+    if (n) await idbPut('photos', p);
+  }
+}
+
+/* ================= detail ================= */
+async function openTrip(id) {
+  const trip = await idbGet('trips', id);
+  if (!trip) return renderHome();
+  S.detail = trip;
+  trip.stats = computeStats(trip.points, trip.start, trip.end);
+  show('detail');
+  $('#detName').value = trip.name;
+  $('#detWhen').textContent = `${fmtDate(trip.start)} ${fmtHM(trip.start)} – ${fmtHM(trip.end)}`;
+  const st = trip.stats;
+  $('#dDist').innerHTML = `${(st.dist/1000).toFixed(1)}<small>km</small>`;
+  $('#dMax').innerHTML = `${Math.round(kmh(st.max))}<small>km/h</small>`;
+  $('#dAvg').innerHTML = `${Math.round(kmh(st.avg))}<small>km/h</small>`;
+  $('#dTotal').textContent = fmtDur(st.total);
+  $('#dMove').textContent = fmtDur(st.moving);
+  $('#dRest').textContent = fmtDur(st.rest);
+  if (!S.detMap) { S.detMap = makeMap('detMap'); S.detLayer = L.layerGroup().addTo(S.detMap); S.photoLayer = L.layerGroup().addTo(S.detMap); }
+  S.detLayer.clearLayers();
+  drawTrack(S.detMap, trip.points, S.detLayer);
+  const good = trip.points.filter(p => p.acc <= 50);
+  if (good.length) {
+    const flag = (txt, bg) => L.divIcon({ className: '', html: `<div style="background:${bg};color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-120%)">${txt}</div>` });
+    L.marker([good[0].lat, good[0].lon], { icon: flag('START', '#1f9d55') }).addTo(S.detLayer);
+    L.marker([good.at(-1).lat, good.at(-1).lon], { icon: flag('GOAL', '#d64545') }).addTo(S.detLayer);
+    for (const r of st.restSpans) L.circleMarker([r.lat, r.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#7a5cff', fillOpacity: 1 })
+      .bindPopup(`休憩 ${fmtHM(r.from)}–${fmtHM(r.to)}（${fmtDurJ((r.to - r.from)/1000)}）`).addTo(S.detLayer);
+  }
+  $('#legend').innerHTML = SPEED_BINS.map((b, i) => `<span><i style="background:${b[1]}"></i>${i === 0 ? '〜20' : i === SPEED_BINS.length - 1 ? '80〜' : (SPEED_BINS[i-1][0]) + '〜' + b[0]}</span>`).join('') + '<span>km/h</span><span><i style="background:#7a5cff;width:8px;height:8px;border-radius:50%"></i>休憩</span>';
+  setTimeout(() => {
+    S.detMap.invalidateSize();
+    if (good.length > 1) S.detMap.fitBounds(L.latLngBounds(good.map(p => [p.lat, p.lon])), { padding: [24, 24] });
+    else if (good.length) S.detMap.setView([good[0].lat, good[0].lon], 15);
+  }, 60);
+  await renderPhotos();
+}
+function exportGpx() {
+  const t = S.detail;
+  const pts = t.points.filter(p => p.acc <= 50).map(p => `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${new Date(p.t).toISOString()}</time>${p.spd != null ? `<extensions><speed>${p.spd}</speed></extensions>` : ''}</trkpt>`).join('\n');
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Ride Logger" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>${esc(t.name)}</name><time>${new Date(t.start).toISOString()}</time></metadata>\n<trk><name>${esc(t.name)}</name><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>`;
+  const file = new File([gpx], `ride_${new Date(t.start).toISOString().slice(0, 10)}.gpx`, { type: 'application/gpx+xml' });
+  saveFile(file);
+}
+async function saveFile(file) {
+  if (NATIVE) {
+    try { const uri = await writeCache(file); await SHARE.share({ title: file.name, files: [uri] }); }
+    catch (e) { if (!/cancel/i.test(String(e && e.message))) toast('共有できませんでした'); }
+    return;
+  }
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+/* ================= slideshow ================= */
+const FONT = '-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif';
+const P = { slides: [], total: 0, t: 0, playing: false, last: 0, cache: new Map(), loading: new Set(), W: 1920, H: 1080, rec: null, onEnd: null };
+const XF = .8; // crossfade sec
+
+function buildSlides() {
+  const trip = S.detail, D = +$('#ssDur').value;
+  const slides = [{ type: 'title', dur: 4 }];
+  for (const p of S.photos) slides.push({ type: 'photo', dur: D, p });
+  slides.push({ type: 'end', dur: 5 });
+  let t = 0; for (const s of slides) { s.t0 = t; t += s.dur; }
+  P.slides = slides; P.total = t;
+  const v = $('#ssAspect').value === 'v';
+  P.W = v ? 1080 : 1920; P.H = v ? 1920 : 1080;
+  const c = $('#stage'); c.width = P.W; c.height = P.H;
+  P.trip = trip;
+}
+function needed(t) {
+  const i = slideIndex(t), ids = [];
+  for (let k = i; k <= i + 2 && k < P.slides.length; k++) if (P.slides[k].type === 'photo') ids.push(P.slides[k].p.id);
+  return ids;
+}
+function slideIndex(t) { let i = P.slides.findIndex(s => t < s.t0 + s.dur); return i < 0 ? P.slides.length - 1 : i; }
+function ensureLoaded(t) {
+  const ids = needed(t);
+  for (const id of ids) if (!P.cache.has(id) && !P.loading.has(id)) {
+    P.loading.add(id);
+    const p = S.photos.find(x => x.id === id);
+    createImageBitmap(p.blob).then(bm => P.cache.set(id, bm)).catch(() => P.cache.set(id, null)).finally(() => P.loading.delete(id));
+  }
+  if (P.cache.size > 4) for (const [id, bm] of [...P.cache]) if (!ids.includes(id)) { try { bm && bm.close(); } catch {} P.cache.delete(id); }
+  return ids.slice(0, 2).every(id => P.cache.has(id));
+}
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function drawRoute(ctx, pts, x, y, w, h, opts = {}) {
+  const g = pts.filter(p => p.acc <= 50); if (g.length < 2) return null;
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+  for (const p of g) { minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat); minLon = Math.min(minLon, p.lon); maxLon = Math.max(maxLon, p.lon); }
+  const k = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+  const gw = Math.max(1e-6, (maxLon - minLon) * k), gh = Math.max(1e-6, maxLat - minLat);
+  const s = Math.min(w / gw, h / gh);
+  const ox = x + (w - gw * s) / 2, oy = y + (h - gh * s) / 2;
+  const pr = p => [ox + (p.lon - minLon) * k * s, oy + (maxLat - p.lat) * s];
+  ctx.save();
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,138,31,.25)'; ctx.lineWidth = opts.lw * 3;
+  ctx.beginPath(); g.forEach((p, i) => { const [a, b] = pr(p); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke();
+  const grd = ctx.createLinearGradient(x, y, x + w, y + h); grd.addColorStop(0, '#ff7a1a'); grd.addColorStop(1, '#ffc24a');
+  ctx.strokeStyle = grd; ctx.lineWidth = opts.lw; ctx.stroke();
+  const [sx, sy] = pr(g[0]), [ex, ey] = pr(g.at(-1));
+  ctx.fillStyle = '#3ecf8e'; ctx.beginPath(); ctx.arc(sx, sy, opts.lw * 1.6, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(ex, ey, opts.lw * 1.6, 0, 7); ctx.fill();
+  if (opts.photos) { ctx.fillStyle = '#fff'; for (const p of opts.photos) if (p.lat != null) { const [a, b] = pr(p); ctx.beginPath(); ctx.arc(a, b, opts.lw * .9, 0, 7); ctx.fill(); } }
+  ctx.restore();
+  return true;
+}
+function bgFill(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1b2633'); g.addColorStop(1, '#07090d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function drawTitle(ctx, W, H, local, dur) {
+  const trip = P.trip, st = trip.stats, v = H > W, u = Math.min(W, H) / 100;
+  bgFill(ctx, W, H);
+  const rb = v ? [W * .1, H * .38, W * .8, H * .5] : [W * .48, H * .12, W * .46, H * .76];
+  drawRoute(ctx, trip.points, ...rb, { lw: u * .9, photos: S.photos });
+  const tx = v ? W * .08 : W * .07, ty = v ? H * .12 : H * .3;
+  ctx.fillStyle = '#ff9a2a'; ctx.font = `700 ${u * 3.4}px ${FONT}`; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(fmtDate(trip.start), tx, ty);
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 7.4}px ${FONT}`;
+  wrapText(ctx, trip.name, tx, ty + u * 10, v ? W * .84 : W * .4, u * 8.6, 2);
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `600 ${u * 3.4}px ${FONT}`;
+  ctx.fillText(`${fmtHM(trip.start)} – ${fmtHM(trip.end)}   ${(st.dist/1000).toFixed(1)} km`, tx, ty + u * (v ? 22 : 30));
+}
+function wrapText(ctx, text, x, y, maxW, lh, maxLines) {
+  let line = '', n = 0;
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > maxW && line && n < maxLines - 1) { ctx.fillText(line, x, y + n * lh); line = ch; n++; }
+    else line += ch;
+  }
+  ctx.fillText(line, x, y + n * lh);
+}
+function drawEnd(ctx, W, H) {
+  const trip = P.trip, st = trip.stats, v = H > W, u = Math.min(W, H) / 100;
+  bgFill(ctx, W, H);
+  ctx.globalAlpha = .35; drawRoute(ctx, trip.points, W * .08, H * .08, W * .84, H * .84, { lw: u * .7 }); ctx.globalAlpha = 1;
+  const items = [['移動距離', (st.dist/1000).toFixed(1), 'km'], ['最高速度', Math.round(kmh(st.max)), 'km/h'], ['平均速度', Math.round(kmh(st.avg)), 'km/h'],
+    ['総時間', fmtDurJ(st.total), ''], ['走行時間', fmtDurJ(st.moving), ''], ['休憩時間', fmtDurJ(st.rest), '']];
+  const cols = v ? 2 : 3, rows = Math.ceil(items.length / cols);
+  const cw = v ? W * .4 : W * .26, ch = u * 17, gx = u * 2.4;
+  const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2, y0 = (H - (rows * ch + (rows - 1) * gx)) / 2 + u * 4;
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 5}px ${FONT}`; ctx.textAlign = 'center';
+  ctx.fillText(trip.name, W / 2, y0 - u * 6);
+  items.forEach(([k, val, un], i) => {
+    const x = x0 + (i % cols) * (cw + gx), y = y0 + Math.floor(i / cols) * (ch + gx);
+    ctx.fillStyle = 'rgba(21,28,38,.85)'; rrect(ctx, x, y, cw, ch, u * 2); ctx.fill();
+    ctx.fillStyle = '#8f9cad'; ctx.font = `600 ${u * 2.6}px ${FONT}`; ctx.fillText(k, x + cw / 2, y + u * 5.6);
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${u * (String(val).length > 6 ? 4.4 : 5.6)}px ${FONT}`;
+    ctx.fillText(val + (un ? ' ' + un : ''), x + cw / 2, y + u * 12.6);
+  });
+  ctx.textAlign = 'left';
+}
+function drawPhoto(ctx, W, H, s, local) {
+  const bm = P.cache.get(s.p.id);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (!bm) return;
+  const prog = Math.min(1, Math.max(0, (local + XF) / (s.dur + XF)));
+  const iw = bm.width, ih = bm.height;
+  const ar = iw / ih, car = W / H;
+  const similar = Math.abs(Math.log(ar / car)) < .25;
+  // 背景（ぼかし or 暗く拡大）
+  if (!similar) {
+    const sc = Math.max(W / iw, H / ih) * 1.1;
+    ctx.save();
+    if (typeof ctx.filter === 'string') ctx.filter = 'blur(28px) brightness(.55)';
+    else ctx.globalAlpha = .35;
+    ctx.drawImage(bm, (W - iw * sc) / 2, (H - ih * sc) / 2, iw * sc, ih * sc);
+    ctx.restore();
+  }
+  const base = similar ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
+  const z = 1 + .07 * prog;
+  const dir = (s.t0 * 7) % 2 < 1 ? 1 : -1;
+  const sc = base * z, w = iw * sc, h = ih * sc;
+  const dx = (similar ? (w - W) / 2 * .6 * (prog - .5) * dir : 0);
+  ctx.drawImage(bm, (W - w) / 2 + dx, (H - h) / 2, w, h);
+  // 右下スタンプ：撮影時刻 + 大まかな地点
+  const u = Math.min(W, H) / 100;
+  const l1 = s.p.t ? `${fmtDate(s.p.t)} ${fmtHM(s.p.t)}` : '';
+  const l2 = s.p.place || '';
+  if (!l1 && !l2) return;
+  const f1 = u * 3.6, f2 = u * 3.0, padX = u * 2, padY = u * 1.6, gap = u * 1;
+  ctx.font = `700 ${f1}px ${FONT}`; const w1 = l1 ? ctx.measureText(l1).width : 0;
+  ctx.font = `600 ${f2}px ${FONT}`; const w2 = l2 ? ctx.measureText('📍 ' + l2).width : 0;
+  const bw = Math.max(w1, w2) + padX * 2, bh = padY * 2 + (l1 ? f1 : 0) + (l2 ? f2 : 0) + (l1 && l2 ? gap : 0);
+  const bx = W - bw - u * 3, by = H - bh - u * 3;
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; rrect(ctx, bx, by, bw, bh, u * 1.4); ctx.fill();
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = u * .6;
+  let ty = by + padY;
+  if (l1) { ctx.fillStyle = '#fff'; ctx.font = `700 ${f1}px ${FONT}`; ctx.fillText(l1, bx + bw - padX, ty); ty += f1 + gap; }
+  if (l2) { ctx.fillStyle = '#ffd08a'; ctx.font = `600 ${f2}px ${FONT}`; ctx.fillText('📍 ' + l2, bx + bw - padX, ty); }
+  ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function drawSlide(ctx, s, local) {
+  const { W, H } = P;
+  if (s.type === 'title') drawTitle(ctx, W, H, local, s.dur);
+  else if (s.type === 'end') drawEnd(ctx, W, H);
+  else drawPhoto(ctx, W, H, s, local);
+}
+function renderAt(t) {
+  const ctx = $('#stage').getContext('2d');
+  const i = slideIndex(t), s = P.slides[i], local = t - s.t0;
+  ctx.globalAlpha = 1; drawSlide(ctx, s, local);
+  const n = P.slides[i + 1];
+  if (n && local > s.dur - XF) { ctx.globalAlpha = (local - (s.dur - XF)) / XF; drawSlide(ctx, n, local - s.dur); ctx.globalAlpha = 1; }
+  const fade = t < .6 ? 1 - t / .6 : t > P.total - .8 ? (t - (P.total - .8)) / .8 : 0;
+  if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, fade)})`; ctx.fillRect(0, 0, P.W, P.H); }
+  $('#progBar').style.width = (t / P.total * 100) + '%';
+}
+function loop(ts) {
+  if (!P.playing) return;
+  const dt = P.last ? Math.min(.1, (ts - P.last) / 1000) : 0; P.last = ts;
+  if (ensureLoaded(P.t)) P.t += dt;
+  renderAt(Math.min(P.t, P.total - .001));
+  if (P.t >= P.total) { P.playing = false; $('#pPlay').textContent = '▶'; if (P.onEnd) { const f = P.onEnd; P.onEnd = null; f(); } return; }
+  requestAnimationFrame(loop);
+}
+function play() { P.playing = true; P.last = 0; $('#pPlay').textContent = '⏸'; requestAnimationFrame(loop); }
+function pause() { P.playing = false; $('#pPlay').textContent = '▶'; }
+async function openPlayer() {
+  if (!S.detail) return;
+  const btn = $('#btnPlay'); btn.disabled = true;
+  try {
+    await resolvePlaces((i, n) => btn.textContent = `地名を取得中… ${i}/${n}`);
+  } finally { btn.disabled = false; btn.textContent = '▶ スライドショー'; }
+  renderPhotos();
+  buildSlides();
+  P.cache.forEach(b => { try { b && b.close(); } catch {} }); P.cache.clear();
+  P.t = 0;
+  $('#player').classList.add('on');
+  play();
+}
+function closePlayer() {
+  pause(); if (P.rec && P.rec.state === 'recording') { P.cancelRec = true; P.rec.stop(); }
+  $('#player').classList.remove('on');
+}
+function pickMime() {
+  if (!window.MediaRecorder) return null;
+  return ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || null;
+}
+async function recordVideo() {
+  const mime = pickMime();
+  const canvas = $('#stage');
+  if (!mime || !canvas.captureStream) return toast('このブラウザは動画の書き出しに対応していません');
+  pause(); P.t = 0; renderAt(0);
+  const stream = canvas.captureStream(30);
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: P.W * P.H > 2e6 ? 10e6 : 6e6 });
+  const chunks = []; P.rec = rec; P.cancelRec = false;
+  rec.ondataavailable = e => e.data && e.data.size && chunks.push(e.data);
+  const btn = $('#pRec'); btn.disabled = true; btn.textContent = '● 録画中…';
+  $('#pPlay').disabled = $('#pRestart').disabled = true;
+  rec.onstop = () => {
+    btn.disabled = false; btn.textContent = '⬇ 動画に保存'; $('#pPlay').disabled = $('#pRestart').disabled = false;
+    stream.getTracks().forEach(t => t.stop());
+    if (P.cancelRec) return;
+    const type = mime.split(';')[0], ext = type.includes('mp4') ? 'mp4' : 'webm';
+    const d = new Date(P.trip.start);
+    const file = new File(chunks, `ride_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.${ext}`, { type });
+    const url = URL.createObjectURL(file);
+    sheet(`<video src="${url}" controls playsinline></video><p class="muted" style="margin:0 0 12px">${(file.size/1048576).toFixed(1)} MB・${ext.toUpperCase()}　${NATIVE ? '写真アプリに保存、またはLINE等で共有できます。' : '「保存／共有」から写真アプリやLINE等に保存できます。'}</p>
+      <div class="row"><button class="btn" data-a="close">閉じる</button>${NATIVE ? '<button class="btn" data-a="save">共有</button><button class="btn acc" data-a="photos">写真に保存</button>' : '<button class="btn acc" data-a="save">保存／共有</button>'}</div>`);
+    $('#sheet').onclick = async e => {
+      const a = e.target.closest('[data-a]'); if (!a) return;
+      if (a.dataset.a === 'save') saveFile(file);
+      else if (a.dataset.a === 'photos') {
+        a.disabled = true; a.textContent = '保存中…';
+        try { await RP.saveVideo({ path: await writeCache(file) }); a.textContent = '✓ 保存しました'; toast('写真アプリに保存しました'); }
+        catch { a.disabled = false; a.textContent = '写真に保存'; toast('保存できませんでした（設定 → RideLog → 写真 を確認）', 4500); }
+      }
+      else { closeSheet(); URL.revokeObjectURL(url); }
+    };
+  };
+  // 先頭の数枚を読み込んでから開始
+  for (let k = 0; k < 50 && !ensureLoaded(0); k++) await sleep(60);
+  rec.start(1000);
+  P.onEnd = () => setTimeout(() => rec.state === 'recording' && rec.stop(), 300);
+  play();
+}
+
+/* ================= wiring ================= */
+$('#btnStart').onclick = startTrip;
+$('#btnStop').onclick = stopTrip;
+$('#btnRecenter').onclick = () => { S.follow = true; const f = S.lastFix; if (f) S.liveMap.setView([f.lat, f.lon], Math.max(S.liveMap.getZoom(), 15)); };
+$('#liveCam').onchange = e => { liveCapture(e.target.files[0]); e.target.value = ''; };
+$('#btnBack').onclick = () => { S.detail = null; renderHome(); };
+$('#detName').onchange = async e => { if (!S.detail) return; S.detail.name = e.target.value.trim() || S.detail.name; await idbPut('trips', S.detail); };
+$('#btnDel').onclick = async () => {
+  if (!(await ask('この記録と写真を削除します。元に戻せません。', '削除', true))) return;
+  for (const p of await photosOf(S.detail.id)) await idbDel('photos', p.id);
+  await idbDel('trips', S.detail.id); S.detail = null; renderHome();
+};
+$('#btnGpx').onclick = exportGpx;
+$('#addPhotos').onchange = e => { addPhotos([...e.target.files]); e.target.value = ''; };
+$('#btnPlay').onclick = openPlayer;
+$('#pPlay').onclick = () => { if (P.playing) pause(); else { if (P.t >= P.total) P.t = 0; play(); } };
+$('#pRestart').onclick = () => { P.t = 0; if (!P.playing) play(); };
+$('#pClose').onclick = closePlayer;
+$('#pRec').onclick = recordVideo;
+$('#modal').onclick = e => { if (e.target.id === 'modal') closeSheet(); };
+$('#setRest').value = store.get('restMin', '3');
+$('#setRest').onchange = e => { store.set('restMin', e.target.value); renderHome(); };
+
+if (NATIVE) {
+  $('#btnLib').style.display = ''; $('#lblAdd').classList.remove('acc'); $('#lblAdd').firstChild.textContent = '＋ 手動で選ぶ';
+  $('#liveCam').parentElement.style.display = 'none';
+  $('#chkOut').parentElement.style.display = 'none';
+  document.querySelector('#detail .muted[style*="margin:0 0 10px"]').textContent = '走行中にiPhoneのカメラで撮った写真は、終了時に自動で取り込みます。';
+  document.querySelector('#home p.muted').textContent = '記録中に地図アプリや音楽アプリに切り替えても、バックグラウンドで記録を続けます。';
+}
+$('#btnLib').onclick = () => collectFromLibrary(false);
+(function installHint() {
+  if (NATIVE) { $('#installHint').textContent = 'iPhoneアプリ版（バックグラウンド記録対応）'; return; }
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+  $('#installHint').textContent = standalone ? 'ホーム画面のアプリとして起動中です。' :
+    ios ? 'Safariの共有ボタン →「ホーム画面に追加」で、バイクのアイコンからアプリとして起動できます。'
+        : 'ブラウザのメニュー →「ホーム画面に追加」（または「アプリをインストール」）で、バイクのアイコンから起動できます。';
+})();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+
+// 起動時：記録中のまま閉じた走行があれば再開
+(async () => {
+  try {
+    const active = (await idbAll('trips')).find(t => t.status === 'active');
+    if (active) { S.trip = active; beginLive(); toast('前回の記録を再開しました'); return; }
+  } catch (e) { console.error(e); }
+  renderHome();
+})();
+</script>
+</body>
+</html>
