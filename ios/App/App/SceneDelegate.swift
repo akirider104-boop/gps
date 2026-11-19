@@ -14,6 +14,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.overrideUserInterfaceStyle = .dark
         window?.makeKeyAndVisible()
 
+        // スライドショーのBGMを消音スイッチ中でも鳴らす（他アプリの音楽は止めない）
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
     }
 
@@ -44,7 +47,8 @@ public class RidePhotosPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "requestAccess", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listPhotos", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPhoto", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "saveVideo", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "saveVideo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveImage", returnType: CAPPluginReturnPromise)
     ]
 
     private static func statusString(_ s: PHAuthorizationStatus) -> String {
@@ -128,6 +132,21 @@ public class RidePhotosPlugin: CAPPlugin, CAPBridgedPlugin {
                 }) { ok, err in
                     if ok { call.resolve() } else { call.reject(err?.localizedDescription ?? "save failed") }
                 }
+            }
+        }
+    }
+
+    /// path: Filesystem プラグインが書き出した file:// URI（JPEG）
+    @objc func saveImage(_ call: CAPPluginCall) {
+        guard let path = call.getString("path"), let url = URL(string: path) else {
+            call.reject("invalid path"); return
+        }
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else { call.reject("denied"); return }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
+            }) { ok, err in
+                if ok { call.resolve() } else { call.reject(err?.localizedDescription ?? "save failed") }
             }
         }
     }

@@ -122,6 +122,27 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
 .pmark{width:14px;height:14px;border-radius:50%;background:var(--acc2);border:2px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
 .me{width:18px;height:18px;border-radius:50%;background:#2f8cff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,140,255,.25)}
 .empty{text-align:center;color:var(--sub);padding:24px 0;font-size:14px}
+
+/* v2 additions */
+textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:15px;line-height:1.6;resize:vertical}
+.chartcard{position:relative;padding:10px 6px 6px}
+.chartcard .ttl{font-size:13px;font-weight:700;margin:0 8px 2px;display:flex;justify-content:space-between;color:var(--text)}
+.chartcard .ttl span{color:var(--sub);font-weight:600}
+.chartcard canvas{width:100%;display:block;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:#0b0f15ee;border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:12px;white-space:nowrap;display:none;z-index:5;font-variant-numeric:tabular-nums}
+.replay{display:flex;align-items:center;gap:8px;margin-top:8px}
+.replay input[type=range]{flex:1;accent-color:var(--acc)}
+.replay .btn{padding:8px 12px}
+.replay .info{font-size:12px;color:var(--sub);min-width:88px;text-align:right;font-variant-numeric:tabular-nums}
+.fuelrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.fuelrow:last-child{border-bottom:0}
+.fuelrow .x{color:var(--sub);padding:4px 8px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--sub);flex:1}
+.field input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;font-size:17px;width:100%}
+.songrow{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0}
+.songrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bgmname{font-size:12px;color:var(--sub);max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.replaymark{width:16px;height:16px;border-radius:50%;background:#ff8a1f;border:3px solid #fff;box-shadow:0 0 0 5px rgba(255,138,31,.3)}
 </style>
 </head>
 <body>
@@ -139,6 +160,18 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
       <select id="setRest"><option value="2">2分以上</option><option value="3">3分以上</option><option value="5">5分以上</option><option value="10">10分以上</option></select>
     </div>
     <p class="muted" style="margin:10px 0 0" id="installHint"></p>
+  </div>
+  <h2>BGM用の曲</h2>
+  <div class="card">
+    <p class="muted" style="margin:0 0 8px">スライドショーのBGMは毎回アプリが自動で作曲します。手持ちの曲（ファイルAppのmp3/m4aなど）も追加でき、ランダムの候補に入ります。Apple Musicの曲は使えません。</p>
+    <div id="songList"></div>
+    <label class="btn filebtn" style="margin-top:6px">＋ 曲を追加<input type="file" accept="audio/*" multiple id="addSongs"></label>
+  </div>
+  <h2>バックアップ</h2>
+  <div class="card">
+    <p class="muted" style="margin:0 0 10px">記録・写真・メモ・給油・曲をまとめて1つのファイルに保存します。「ファイル」Appに保存しておけば、入れ直しや機種変更のあとも復元できます。</p>
+    <div class="row"><button class="btn" id="btnBackup">💾 バックアップを作成</button>
+      <label class="btn filebtn">↩ 復元<input type="file" id="restoreFile"></label></div>
   </div>
 </section>
 
@@ -160,6 +193,7 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
     </div>
     <div class="livebtns">
       <label class="btn filebtn" style="flex:.6">📷 撮影<input type="file" accept="image/*" capture="environment" id="liveCam"></label>
+      <button class="btn" id="btnFuelLive" style="flex:.6">⛽ 給油</button>
       <button class="btn stopbtn" id="btnStop">■ 終了</button>
     </div>
   </div>
@@ -170,13 +204,19 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
   <div class="topbar">
     <button class="btn" id="btnBack">‹ 戻る</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnShare">🖼 まとめ画像</button>
     <button class="btn" id="btnGpx">GPX</button>
     <button class="btn danger" id="btnDel">削除</button>
   </div>
   <input class="name" id="detName" type="text">
   <div class="muted" id="detWhen"></div>
   <div id="detMap" style="margin-top:10px"></div>
-  <div class="legend" id="legend"></div>
+  <div class="replay">
+    <button class="btn" id="rpPlay">▶ 軌跡を再生</button>
+    <input type="range" id="rpSeek" min="0" max="1000" value="0">
+    <select id="rpSpeed"><option value="30">×30</option><option value="60" selected>×60</option><option value="120">×120</option><option value="300">×300</option></select>
+  </div>
+  <div class="row" style="justify-content:space-between"><div class="legend" id="legend"></div><div class="replay info" id="rpInfo" style="margin:4px 2px 0"></div></div>
   <div class="grid" style="margin-top:12px">
     <div class="stat"><div class="k">移動距離</div><div class="v" id="dDist"></div></div>
     <div class="stat"><div class="k">最高速度</div><div class="v" id="dMax"></div></div>
@@ -186,6 +226,19 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
     <div class="stat"><div class="k">休憩時間</div><div class="v" id="dRest"></div></div>
   </div>
   <p class="muted" style="margin:6px 2px 0">平均速度は休憩を除いた走行中の平均です。</p>
+
+  <h2>メモ・思い出</h2>
+  <textarea id="detMemo" placeholder="立ち寄った場所、景色、ごはん、道の状態など…"></textarea>
+  <div class="muted" id="memoSaved" style="text-align:right;min-height:18px"></div>
+
+  <h2>速度と標高</h2>
+  <div class="card chartcard"><div class="ttl">速度 <span id="spdNote">km/h</span></div><canvas id="spdChart" height="170"></canvas>
+    <div class="ttl" style="margin-top:8px">標高 <span id="eleNote">m</span></div><canvas id="eleChart" height="110"></canvas><div class="tip" id="chartTip"></div></div>
+
+  <h2>給油・燃費</h2>
+  <div class="card"><div id="fuelList"></div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="btnFuelAdd">⛽ 給油を追加</button><span class="muted" id="fuelSum"></span></div>
+    <p class="muted" style="margin:8px 0 0">燃費は「満タン」給油の間に走った距離（このアプリの記録の合計）÷ 給油量で計算します。</p></div>
 
   <h2>写真とスライドショー</h2>
   <div class="row" style="margin-bottom:10px">
@@ -198,8 +251,10 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
   <div class="card" style="margin-top:14px">
     <div class="row">
       <select id="ssAspect"><option value="h">横 16:9</option><option value="v">縦 9:16</option></select>
-      <select id="ssDur"><option value="3">1枚 3秒</option><option value="4" selected>1枚 4秒</option><option value="5">1枚 5秒</option></select>
+      <select id="ssDur"><option value="1">1枚 1秒</option><option value="1.5">1枚 1.5秒</option><option value="2">1枚 2秒</option><option value="3" selected>1枚 3秒</option><option value="4">1枚 4秒</option><option value="5">1枚 5秒</option></select>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ssMap" checked>写真に地図</label>
     </div>
+    <div class="row" style="margin-top:10px"><span class="muted">BGM</span><select id="ssBgm" style="flex:1"></select></div>
     <div class="row" style="margin-top:10px">
       <button class="btn acc" id="btnPlay" style="flex:1">▶ スライドショー</button>
     </div>
@@ -212,7 +267,10 @@ select,input[type=text]{background:var(--panel2);color:var(--text);border:1px so
   <div class="prog"><i id="progBar"></i></div>
   <div class="pctl">
     <button class="btn" id="pPlay">⏸</button>
-    <button class="btn" id="pRestart">⟲ 最初から</button>
+    <button class="btn" id="pRestart">⟲</button>
+    <button class="btn" id="pShuffle" title="BGMを変える">🎲</button>
+    <button class="btn" id="pMute">🔊</button>
+    <span class="bgmname" id="bgmName"></span>
     <span style="flex:1"></span>
     <button class="btn acc" id="pRec">⬇ 動画に保存</button>
     <button class="btn" id="pClose">✕</button>
@@ -279,11 +337,12 @@ let _db;
 function db() {
   if (_db) return _db;
   _db = new Promise((res, rej) => {
-    const r = indexedDB.open('ride-logger', 1);
+    const r = indexedDB.open('ride-logger', 2);
     r.onupgradeneeded = () => {
       const d = r.result;
-      d.createObjectStore('trips', { keyPath: 'id' });
-      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      if (!d.objectStoreNames.contains('trips')) d.createObjectStore('trips', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('photos')) d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      if (!d.objectStoreNames.contains('music')) d.createObjectStore('music', { keyPath: 'id' });
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -395,7 +454,7 @@ function show(id) {
 
 /* ================= home ================= */
 async function renderHome() {
-  show('home');
+  show('home'); renderSongs();
   const trips = (await idbAll('trips')).filter(t => t.status === 'done').sort((a, b) => b.start - a.start);
   const el = $('#tripList');
   if (!trips.length) { el.innerHTML = '<div class="empty">まだ記録がありません</div>'; return; }
@@ -405,7 +464,8 @@ async function renderHome() {
     const b = document.createElement('button');
     b.className = 'trip';
     b.innerHTML = `<div class="ic">🏍️</div><div style="flex:1;min-width:0"><div class="t1">${esc(t.name)}</div>
-      <div class="t2">${fmtDate(t.start)} ${fmtHM(t.start)}–${fmtHM(t.end)}　${(st.dist/1000).toFixed(1)} km・${fmtDurJ(st.total)}</div></div><div style="color:var(--sub)">›</div>`;
+      <div class="t2">${fmtDate(t.start)} ${fmtHM(t.start)}–${fmtHM(t.end)}　${(st.dist/1000).toFixed(1)} km・${fmtDurJ(st.total)}</div>
+      ${t.memo ? `<div class="t2" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📝 ${esc(t.memo)}</div>` : ''}</div><div style="color:var(--sub)">›</div>`;
     b.onclick = () => openTrip(t.id);
     el.appendChild(b);
   }
@@ -438,7 +498,7 @@ function beginLive() {
     BG.addWatcher({ backgroundMessage: 'ツーリングを記録中', backgroundTitle: 'RideLog', requestPermissions: true, stale: false, distanceFilter: 0 },
       (loc, err) => {
         if (err) return onPosErr(err.code === 'NOT_AUTHORIZED' ? { code: 1, native: true } : { code: 2 });
-        if (loc) onPos({ timestamp: loc.time || Date.now(), coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, speed: loc.speed } });
+        if (loc) onPos({ timestamp: loc.time || Date.now(), coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, speed: loc.speed, altitude: loc.altitude } });
       }).then(id => S.watchId = id).catch(() => onPosErr({ code: 2 }));
   } else {
     S.watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
@@ -452,6 +512,7 @@ function onPos(pos) {
   const acc = Math.round(c.accuracy || 999);
   const spd = (c.speed == null || isNaN(c.speed) || c.speed < 0) ? null : +c.speed.toFixed(2);
   const p = { t, lat: +c.latitude.toFixed(6), lon: +c.longitude.toFixed(6), acc, spd };
+  if (c.altitude != null && !isNaN(c.altitude)) p.alt = Math.round(c.altitude);
   S.lastFix = p;
   const pts = S.trip.points, last = pts[pts.length - 1];
   setGps(acc);
@@ -702,7 +763,14 @@ async function openTrip(id) {
     S.detMap.invalidateSize();
     if (good.length > 1) S.detMap.fitBounds(L.latLngBounds(good.map(p => [p.lat, p.lon])), { padding: [24, 24] });
     else if (good.length) S.detMap.setView([good[0].lat, good[0].lon], 15);
+    setCursor(null);
   }, 60);
+  setupReplay();
+  $('#detMemo').value = trip.memo || ''; $('#memoSaved').textContent = '';
+  CH.trip = null; renderCharts();
+  ensureElevation(trip).then(() => { if (S.detail === trip) { if (!trip.elev) trip.elev = null; renderCharts(); } });
+  renderFuel();
+  renderSongs();
   await renderPhotos();
 }
 function exportGpx() {
@@ -725,29 +793,650 @@ async function saveFile(file) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
 
+/* ================= tiles / base map（スライド・まとめ画像用） ================= */
+const TILE_URL = {
+  std: (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/std/${z}/${x}/${y}.png`,
+  pale: (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,
+  dem: (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`,
+};
+const tileCache = new Map();
+function loadTile(url) {
+  if (!tileCache.has(url)) tileCache.set(url, new Promise(res => {
+    const im = new Image(); im.crossOrigin = 'anonymous';
+    const fail = () => { clearTimeout(to); tileCache.delete(url); res(null); };
+    const to = setTimeout(fail, 8000);
+    im.onload = () => { clearTimeout(to); res(im); };
+    im.onerror = fail;
+    im.src = url;
+  }));
+  return tileCache.get(url);
+}
+const wx = (lon, z) => (lon + 180) / 360 * 256 * 2 ** z;
+const wy = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 256 * 2 ** z; };
+const goodPts = pts => pts.filter(p => p.acc <= 50);
+function thin(arr, n) { if (arr.length <= n) return arr.slice(); const out = [], step = arr.length / n; for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * step)]); out.push(arr.at(-1)); return out; }
+function darkBg(ctx, W, H) { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1b2633'); g.addColorStop(1, '#07090d'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+// ルート全体が収まる地図画像を作る（タイルが取れない時は暗い背景）
+async function baseMap(pts, W, H, { fill = .7, style = 'std', maxZ = 16 } = {}) {
+  const g = goodPts(pts);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d'); darkBg(ctx, W, H);
+  if (!g.length) return { canvas: c, ok: false, proj: () => [W / 2, H / 2] };
+  let a = 90, b = -90, l = 180, r = -180;
+  for (const p of g) { a = Math.min(a, p.lat); b = Math.max(b, p.lat); l = Math.min(l, p.lon); r = Math.max(r, p.lon); }
+  let z = maxZ;
+  for (; z > 4; z--) if (wx(r, z) - wx(l, z) <= W * fill && wy(a, z) - wy(b, z) <= H * fill) break;
+  const ox = (wx(l, z) + wx(r, z)) / 2 - W / 2, oy = (wy(a, z) + wy(b, z)) / 2 - H / 2;
+  const proj = (lat, lon) => [wx(lon, z) - ox, wy(lat, z) - oy];
+  const jobs = [];
+  for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H - 1) / 256); ty++)
+    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W - 1) / 256); tx++)
+      jobs.push(loadTile(TILE_URL[style](z, tx, ty)).then(im => { if (im) ctx.drawImage(im, Math.round(tx * 256 - ox), Math.round(ty * 256 - oy), 256, 256); return !!im; }));
+  let ok = (await Promise.all(jobs)).some(Boolean);
+  if (ok) { try { ctx.getImageData(0, 0, 1, 1); } catch { ok = false; darkBg(ctx, W, H); } }
+  return { canvas: c, ok, proj, z };
+}
+function strokePath(ctx, pp, lw, color, upto = pp.length, k = 1, outline = true) {
+  if (upto < 2) return;
+  ctx.save(); ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < upto; i++) { const x = pp[i][0] * k, y = pp[i][1] * k; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  if (outline) { ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = lw + Math.max(2, lw * .8); ctx.stroke(); }
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+  ctx.restore();
+}
+function dot(ctx, x, y, r, fill, ring = '#fff') { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = ring; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, r * .68, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); }
+function idxAt(pp, t) { let lo = 0, hi = pp.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pp[m][2] <= t) lo = m; else hi = m - 1; } return lo; }
+
+/* ================= 標高（国土地理院 標高タイル → 無ければGPS高度） ================= */
+async function demElevations(samples) {
+  const z = 12, tiles = new Map(), out = [];
+  for (const p of samples) {
+    const X = wx(p.lon, z), Y = wy(p.lat, z), tx = Math.floor(X / 256), ty = Math.floor(Y / 256), key = tx + '/' + ty;
+    if (!tiles.has(key)) {
+      const im = await loadTile(TILE_URL.dem(z, tx, ty)); let data = null;
+      if (im) { const c = document.createElement('canvas'); c.width = c.height = 256; const cx = c.getContext('2d'); cx.drawImage(im, 0, 0); try { data = cx.getImageData(0, 0, 256, 256).data; } catch {} }
+      tiles.set(key, data);
+    }
+    const d = tiles.get(key); let h = null;
+    if (d) {
+      const i = ((Math.floor(Y) - ty * 256) * 256 + (Math.floor(X) - tx * 256)) * 4;
+      const v = d[i] * 65536 + d[i + 1] * 256 + d[i + 2];
+      if (d[i + 3] !== 0 && v !== 8388608) h = (v < 8388608 ? v : v - 16777216) * .01;
+    }
+    out.push([p.t, h]);
+  }
+  return out;
+}
+async function ensureElevation(trip) {
+  if (trip.elev && trip.elev.pts && trip.elev.pts.length > 1) return trip.elev;
+  const g = goodPts(trip.points); if (g.length < 2) return null;
+  const samp = []; let last = null;
+  for (const p of g) if (!last || hav(last, p) >= 60) { samp.push(p); last = p; }
+  const smp = thin(samp, 1500);
+  let pts = null, src = 'dem';
+  try { pts = (await demElevations(smp)).filter(x => x[1] != null); } catch {}
+  if (!pts || pts.length < smp.length * .5) {
+    const al = g.filter(p => p.alt != null);
+    if (al.length < 10) return null;
+    pts = thin(al, 1500).map(p => [p.t, p.alt]); src = 'gps';
+  }
+  trip.elev = { src, pts };
+  idbPut('trips', trip).catch(() => {});
+  return trip.elev;
+}
+function elevStats(pts) {
+  if (!pts || pts.length < 2) return null;
+  const h = pts.map(x => x[1]);
+  const sm = h.map((_, i) => { let s = 0, n = 0; for (let k = Math.max(0, i - 2); k <= Math.min(h.length - 1, i + 2); k++) { s += h[k]; n++; } return s / n; });
+  let gain = 0, ref = sm[0];
+  for (const v of sm) { if (v - ref >= 4) { gain += v - ref; ref = v; } else if (ref - v >= 4) ref = v; }
+  return { max: Math.max(...h), min: Math.min(...h), gain };
+}
+
+/* ================= グラフ（速度・標高） ================= */
+function speedSeries(trip) {
+  const g = goodPts(trip.points), raw = [];
+  for (let i = 0; i < g.length; i++) {
+    const p = g[i]; let v = p.spd;
+    if (v == null) { const q = g[Math.max(0, i - 4)]; const dt = (p.t - q.t) / 1000; v = dt > 0 ? hav(q, p) / dt : 0; }
+    raw.push([p.t, Math.min(kmh(v), 300)]);
+  }
+  const sm = []; let a = 0, b = 0, sum = 0;
+  for (let i = 0; i < raw.length; i++) {
+    while (b < raw.length && raw[b][0] <= raw[i][0] + 6000) sum += raw[b++][1];
+    while (raw[a][0] < raw[i][0] - 6000) sum -= raw[a++][1];
+    sm.push([raw[i][0], Math.max(0, sum / (b - a))]);
+  }
+  return sm;
+}
+function valueAt(series, t) {
+  if (!series || !series.length) return null;
+  let lo = 0, hi = series.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (series[m][0] < t) lo = m + 1; else hi = m; }
+  const b = series[lo], a = series[Math.max(0, lo - 1)];
+  if (b[0] === a[0] || t >= b[0]) return b[1];
+  return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+}
+function niceStep(range, n) { const raw = range / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+const CH = { spd: null, ele: null, t0: 0, t1: 1, cursor: null };
+function drawChart(cv, series, o) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 340, H = +(cv.dataset.h || (cv.dataset.h = cv.getAttribute('height')));
+  cv.style.height = H + 'px';
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const pl = 36, pr = 10, pt = 8, pb = 20, w = W - pl - pr, h = H - pt - pb;
+  const X = t => pl + (t - CH.t0) / Math.max(1, CH.t1 - CH.t0) * w;
+  ctx.font = `11px ${FONT}`; ctx.textBaseline = 'middle';
+  if (!series || series.length < 2) { ctx.fillStyle = '#8f9cad'; ctx.textAlign = 'center'; ctx.fillText(o.empty || 'データがありません', W / 2, H / 2); ctx.textAlign = 'left'; cv._X = null; return; }
+  let lo = o.zero ? 0 : Infinity, hi = -Infinity;
+  for (const [, v] of series) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (hi - lo < 10) hi = lo + 10;
+  const step = niceStep(hi - lo, 3); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const Y = v => pt + h - (v - lo) / (hi - lo) * h;
+  // 休憩帯
+  for (const r of o.rest || []) { const x0 = X(r.from), x1 = X(r.to); ctx.fillStyle = 'rgba(122,92,255,.16)'; ctx.fillRect(x0, pt, Math.max(1, x1 - x0), h); if (x1 - x0 > 26 && o.restLabel) { ctx.fillStyle = '#a99bff'; ctx.textAlign = 'center'; ctx.fillText('休憩', (x0 + x1) / 2, pt + 8); ctx.textAlign = 'left'; } }
+  // グリッド
+  ctx.strokeStyle = '#26303d'; ctx.lineWidth = 1; ctx.fillStyle = '#8f9cad'; ctx.textAlign = 'right';
+  for (let v = lo; v <= hi + 1e-9; v += step) { const y = Math.round(Y(v)) + .5; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(W - pr, y); ctx.stroke(); ctx.fillText(Math.round(v), pl - 6, y); }
+  ctx.textAlign = 'center';
+  const span = CH.t1 - CH.t0, tstep = [15, 30, 60, 120, 180, 240].map(m => m * 60000).find(s => span / s <= 5) || 360 * 60000;
+  for (let t = Math.ceil(CH.t0 / tstep) * tstep; t <= CH.t1; t += tstep) { const x = X(t); if (x < pl + 14 || x > W - pr - 14) continue; ctx.fillText(fmtHM(t), x, H - 8); }
+  ctx.textAlign = 'left';
+  // 面 + 線
+  const pts = thin(series, Math.max(200, Math.round(w * 1.5)));
+  ctx.beginPath(); pts.forEach(([t, v], i) => { const x = X(t), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.lineJoin = 'round'; ctx.strokeStyle = o.color; ctx.lineWidth = 2; ctx.stroke();
+  ctx.lineTo(X(pts.at(-1)[0]), pt + h); ctx.lineTo(X(pts[0][0]), pt + h); ctx.closePath();
+  const gr = ctx.createLinearGradient(0, pt, 0, pt + h); gr.addColorStop(0, o.fill); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gr; ctx.fill();
+  // 最大値ラベル
+  if (o.maxLabel) { let mi = 0; series.forEach(([, v], i) => { if (v > series[mi][1]) mi = i; }); const [mt, mv] = series[mi]; const x = X(mt), y = Y(mv);
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fillStyle = o.color; ctx.fill(); ctx.strokeStyle = '#151c26'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#eef2f6'; ctx.font = `600 11px ${FONT}`; const txt = o.maxLabel; const tw = ctx.measureText(txt).width; ctx.fillText(txt, Math.min(Math.max(pl, x - tw / 2), W - pr - tw), Math.max(pt + 6, y - 11)); }
+  // カーソル
+  if (CH.cursor != null) { const x = X(CH.cursor), v = valueAt(series, CH.cursor); ctx.strokeStyle = 'rgba(238,242,246,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + h); ctx.stroke(); if (v != null) { ctx.beginPath(); ctx.arc(x, Y(v), 4.5, 0, 7); ctx.fillStyle = o.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); } }
+  cv._X = { pl, w };
+}
+function renderCharts() {
+  const trip = S.detail; if (!trip) return;
+  CH.t0 = trip.start; CH.t1 = trip.end;
+  if (!CH.spd || CH.trip !== trip) { CH.trip = trip; CH.spd = speedSeries(trip); CH.ele = null; CH.cursor = null; }
+  CH.ele = trip.elev ? trip.elev.pts : null;
+  const st = trip.stats;
+  drawChart($('#spdChart'), CH.spd, { color: '#ff8a1f', fill: 'rgba(255,138,31,.28)', zero: true, rest: st.restSpans, restLabel: true, maxLabel: `最高 ${Math.round(kmh(st.max))} km/h` });
+  const es = trip.elev ? elevStats(trip.elev.pts) : null;
+  drawChart($('#eleChart'), CH.ele, { color: '#2ed3c6', fill: 'rgba(46,211,198,.22)', rest: st.restSpans, empty: trip.elev === undefined ? '標高を取得中…' : '標高データがありません（オフラインなど）' });
+  $('#eleNote').textContent = es ? `最高 ${Math.round(es.max)}m・獲得 ${Math.round(es.gain)}m${trip.elev.src === 'gps' ? '（GPS）' : ''}` : 'm';
+  $('#spdNote').textContent = 'km/h（休憩は紫）';
+}
+function setCursor(t, showTip = true) {
+  const trip = S.detail; if (!trip) return;
+  CH.cursor = t == null ? null : Math.max(trip.start, Math.min(trip.end, t));
+  renderCharts();
+  const tip = $('#chartTip');
+  if (CH.cursor == null) { tip.style.display = 'none'; if (S.cursorMark) S.cursorMark.remove(); return; }
+  const v = valueAt(CH.spd, CH.cursor), e = valueAt(CH.ele, CH.cursor);
+  if (showTip) {
+    tip.innerHTML = `<b>${fmtHM(CH.cursor)}</b>　${v != null ? Math.round(v) + ' km/h' : ''}${e != null ? '　標高 ' + Math.round(e) + ' m' : ''}`;
+    const cv = $('#spdChart'), X = cv._X; tip.style.display = 'block';
+    if (X) { const x = X.pl + (CH.cursor - CH.t0) / (CH.t1 - CH.t0) * X.w; tip.style.left = Math.min(Math.max(4, x + 12 - (x > cv.clientWidth * .6 ? tip.offsetWidth + 24 : 0)), cv.clientWidth - tip.offsetWidth) + 'px'; tip.style.top = '26px'; }
+  }
+  const pos = posInterp(goodPts(trip.points), CH.cursor);
+  if (pos && S.detMap) {
+    if (!S.cursorMark) S.cursorMark = L.circleMarker(pos, { radius: 8, color: '#fff', weight: 3, fillColor: '#ff8a1f', fillOpacity: 1 });
+    S.cursorMark.setLatLng(pos).addTo(S.detMap);
+  }
+}
+function posInterp(g, t) {
+  if (!g.length) return null;
+  let lo = 0, hi = g.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (g[m].t < t) lo = m + 1; else hi = m; }
+  const b = g[lo], a = g[Math.max(0, lo - 1)];
+  if (b.t === a.t || t >= b.t) return [b.lat, b.lon];
+  const k = (t - a.t) / (b.t - a.t);
+  return [a.lat + (b.lat - a.lat) * k, a.lon + (b.lon - a.lon) * k];
+}
+function chartPointer(e) {
+  const cv = e.currentTarget, X = cv._X; if (!X || !S.detail) return;
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left;
+  setCursor(CH.t0 + (x - X.pl) / X.w * (CH.t1 - CH.t0));
+}
+
+/* ================= 軌跡の再生 ================= */
+const RP_ = { t: 0, playing: false, last: 0, g: [], trail: null, mark: null, drawn: -1, lastPan: 0 };
+function setupReplay() {
+  stopReplay();
+  const trip = S.detail; RP_.g = goodPts(trip.points); RP_.t = trip.start; RP_.drawn = -1;
+  if (RP_.trail) RP_.trail.remove(); if (RP_.mark) RP_.mark.remove();
+  RP_.trail = L.polyline([], { color: '#ff8a1f', weight: 6, opacity: 1 });
+  RP_.mark = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="replaymark"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 1000 });
+  $('#rpSeek').value = 0; $('#rpInfo').textContent = ''; $('#rpPlay').textContent = '▶ 軌跡を再生';
+  $('#rpPlay').disabled = RP_.g.length < 2;
+}
+function replayDim(on) { S.detLayer.eachLayer(l => { if (l instanceof L.Polyline) l.setStyle({ opacity: on ? .3 : .95 }); }); }
+function replayUpdate(rebuild) {
+  const trip = S.detail, g = RP_.g; if (!g.length) return;
+  let lo = 0, hi = g.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g[m].t <= RP_.t) lo = m; else hi = m - 1; }
+  if (rebuild || lo < RP_.drawn) { RP_.trail.setLatLngs(g.slice(0, lo + 1).map(p => [p.lat, p.lon])); RP_.drawn = lo; }
+  else { for (let i = RP_.drawn + 1; i <= lo; i++) RP_.trail.addLatLng([g[i].lat, g[i].lon]); RP_.drawn = lo; }
+  const pos = posInterp(g, RP_.t); if (pos) RP_.mark.setLatLng(pos);
+  if (!S.detMap.hasLayer(RP_.trail)) { RP_.trail.addTo(S.detMap); RP_.mark.addTo(S.detMap); replayDim(true); }
+  const now = performance.now();
+  if (pos && now - RP_.lastPan > 250 && !S.detMap.getBounds().pad(-.2).contains(pos)) { S.detMap.panTo(pos, { animate: true, duration: .25 }); RP_.lastPan = now; }
+  $('#rpSeek').value = Math.round((RP_.t - trip.start) / (trip.end - trip.start) * 1000);
+  const v = valueAt(CH.spd, RP_.t);
+  $('#rpInfo').textContent = `${fmtHM(RP_.t)}　${v != null ? Math.round(v) : 0} km/h`;
+  if (now - (RP_.lastCur || 0) > 120) { RP_.lastCur = now; CH.cursor = RP_.t; renderCharts(); }
+}
+function replayLoop(ts) {
+  if (!RP_.playing) return;
+  const dt = RP_.last ? Math.min(.1, (ts - RP_.last) / 1000) : 0; RP_.last = ts;
+  RP_.t += dt * (+$('#rpSpeed').value) * 1000;
+  for (const r of S.detail.stats.restSpans) if (RP_.t > r.from + 3000 && RP_.t < r.to) RP_.t = r.to; // 休憩は飛ばす
+  if (RP_.t >= S.detail.end) { RP_.t = S.detail.end; replayUpdate(); stopReplay(true); return; }
+  replayUpdate();
+  requestAnimationFrame(replayLoop);
+}
+function toggleReplay() {
+  if (RP_.playing) return stopReplay(true);
+  if (RP_.t >= S.detail.end - 1000) { RP_.t = S.detail.start; replayUpdate(true); }
+  RP_.playing = true; RP_.last = 0; $('#rpPlay').textContent = '⏸ 一時停止';
+  if (RP_.g.length) S.detMap.setView(posInterp(RP_.g, RP_.t), Math.max(S.detMap.getZoom(), 13));
+  requestAnimationFrame(replayLoop);
+}
+function stopReplay(keep) {
+  RP_.playing = false; $('#rpPlay').textContent = '▶ 軌跡を再生';
+  if (!keep) { if (RP_.trail) RP_.trail.remove(); if (RP_.mark) RP_.mark.remove(); if (S.detLayer) replayDim(false); }
+}
+
+/* ================= メモ ================= */
+let memoTimer = null;
+function onMemo() {
+  clearTimeout(memoTimer); $('#memoSaved').textContent = '…';
+  memoTimer = setTimeout(async () => { if (!S.detail) return; S.detail.memo = $('#detMemo').value; await idbPut('trips', S.detail); $('#memoSaved').textContent = '保存しました'; }, 600);
+}
+
+/* ================= 給油・燃費 ================= */
+function fuelForm(onSave) {
+  sheet(`<p style="margin-bottom:12px"><b>⛽ 給油を記録</b></p>
+    <div class="row"><label class="field">給油量（L）<input id="fL" type="number" inputmode="decimal" step="0.01" min="0" placeholder="例 12.5"></label>
+    <label class="field">金額（円）<input id="fY" type="number" inputmode="numeric" min="0" placeholder="例 2300"></label></div>
+    <label class="muted" style="display:flex;gap:8px;align-items:center;margin:14px 0"><input type="checkbox" id="fFull" checked>満タンまで入れた（燃費計算に使用）</label>
+    <div class="row"><button class="btn" data-a="0">キャンセル</button><button class="btn acc" data-a="1">保存</button></div>`);
+  setTimeout(() => $('#fL') && $('#fL').focus(), 100);
+  $('#sheet').onclick = async e => {
+    const a = e.target.closest('[data-a]'); if (!a) return;
+    if (a.dataset.a === '1') {
+      const liters = parseFloat($('#fL').value), yen = parseInt($('#fY').value || '0', 10);
+      if (!(liters > 0)) { toast('給油量を入力してください'); return; }
+      closeSheet(); $('#sheet').onclick = null;
+      await onSave({ id: 'f' + Date.now(), liters: Math.round(liters * 100) / 100, yen: yen > 0 ? yen : 0, full: $('#fFull') ? $('#fFull').checked : true });
+    } else { closeSheet(); $('#sheet').onclick = null; }
+  };
+}
+function liveFuel() {
+  if (!S.trip) return;
+  fuelForm(async f => {
+    const st = computeStats(S.trip.points, S.trip.start, Date.now());
+    Object.assign(f, { t: Date.now(), dist: Math.round(st.dist) });
+    (S.trip.fuel = S.trip.fuel || []).push(f); saveLive();
+    toast(`給油 ${f.liters}L を記録しました`);
+  });
+}
+function addFuelDetail() {
+  const trip = S.detail; if (!trip) return;
+  fuelForm(async f => {
+    Object.assign(f, { t: trip.end, dist: Math.round(trip.stats.dist) });
+    (trip.fuel = trip.fuel || []).push(f); await idbPut('trips', trip); renderFuel();
+  });
+}
+async function fuelEconomy() {
+  const trips = (await idbAll('trips')).filter(t => t.status === 'done').map(t => t.id === (S.detail && S.detail.id) ? S.detail : t).sort((a, b) => a.start - b.start);
+  let odo = 0; const entries = [];
+  for (const t of trips) {
+    const d = t.stats ? t.stats.dist : computeStats(t.points, t.start, t.end).dist;
+    for (const f of (t.fuel || [])) entries.push({ f, odo: odo + Math.min(f.dist || 0, d) });
+    odo += d;
+  }
+  entries.sort((a, b) => a.odo - b.odo || a.f.t - b.f.t);
+  const eco = new Map(); let lastFull = null, since = 0;
+  for (const e of entries) { since += e.f.liters; if (e.f.full) { if (lastFull && e.odo - lastFull.odo > 1000) eco.set(e.f.id, (e.odo - lastFull.odo) / 1000 / since); lastFull = e; since = 0; } }
+  return eco;
+}
+async function renderFuel() {
+  const trip = S.detail, list = $('#fuelList'), fuel = trip.fuel || [];
+  if (!fuel.length) { list.innerHTML = '<div class="muted">給油の記録はありません</div>'; $('#fuelSum').textContent = ''; return; }
+  const eco = await fuelEconomy();
+  list.innerHTML = '';
+  fuel.slice().sort((a, b) => a.t - b.t).forEach(f => {
+    const d = document.createElement('div'); d.className = 'fuelrow';
+    const e = eco.get(f.id);
+    d.innerHTML = `<span>⛽</span><div style="flex:1"><b>${f.liters.toFixed(2)} L</b>${f.yen ? `　${f.yen.toLocaleString()}円` : ''}${f.full ? '　<span class="muted">満タン</span>' : ''}
+      <div class="muted">${fmtHM(f.t)}・${(f.dist / 1000).toFixed(1)}km地点${e ? `　→ <b style="color:var(--acc2)">${e.toFixed(1)} km/L</b>` : ''}</div></div><button class="x">✕</button>`;
+    d.querySelector('.x').onclick = async () => { if (!(await ask('この給油記録を削除しますか？', '削除', true))) return; trip.fuel = trip.fuel.filter(x => x.id !== f.id); await idbPut('trips', trip); renderFuel(); };
+    list.appendChild(d);
+  });
+  const L_ = fuel.reduce((s, f) => s + f.liters, 0), Y_ = fuel.reduce((s, f) => s + (f.yen || 0), 0);
+  const ecos = fuel.map(f => eco.get(f.id)).filter(Boolean);
+  $('#fuelSum').textContent = `合計 ${L_.toFixed(1)}L${Y_ ? `・${Y_.toLocaleString()}円` : ''}${ecos.length ? `・燃費 ${ecos.at(-1).toFixed(1)}km/L` : ''}`;
+}
+async function tripEconomy(trip) { const eco = await fuelEconomy(); const v = (trip.fuel || []).map(f => eco.get(f.id)).filter(Boolean); return v.length ? v.at(-1) : null; }
+
+/* ================= まとめ画像（SNS用） ================= */
+function loadImage(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
+async function makeSummaryImage() {
+  const trip = S.detail; if (!trip) return;
+  const btn = $('#btnShare'); btn.disabled = true; btn.textContent = '作成中…';
+  try {
+    const W = 1080, H = 1350, MH = 780;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0b0f15'; ctx.fillRect(0, 0, W, H);
+    const bm = await baseMap(trip.points, W, MH, { fill: .76, style: 'std' });
+    ctx.drawImage(bm.canvas, 0, 0);
+    ctx.fillStyle = 'rgba(8,12,18,.18)'; ctx.fillRect(0, 0, W, MH);
+    const pp = goodPts(trip.points).map(p => bm.proj(p.lat, p.lon));
+    strokePath(ctx, pp, 9, '#ff8a1f');
+    for (const ph of S.photos) if (ph.lat != null) { const [x, y] = bm.proj(ph.lat, ph.lon); dot(ctx, x, y, 9, '#ffd08a'); }
+    if (pp.length) { dot(ctx, pp[0][0], pp[0][1], 16, '#1f9d55'); dot(ctx, pp.at(-1)[0], pp.at(-1)[1], 16, '#d64545'); }
+    const fade = ctx.createLinearGradient(0, MH - 220, 0, MH); fade.addColorStop(0, 'rgba(11,15,21,0)'); fade.addColorStop(1, '#0b0f15'); ctx.fillStyle = fade; ctx.fillRect(0, MH - 220, W, 220);
+    const st = trip.stats, es = trip.elev ? elevStats(trip.elev.pts) : null, eco = await tripEconomy(trip);
+    let y = MH - 70;
+    ctx.fillStyle = '#ff9a2a'; ctx.font = `700 32px ${FONT}`; ctx.fillText(`${fmtDate(trip.start)}  ${fmtHM(trip.start)} – ${fmtHM(trip.end)}`, 60, y);
+    ctx.fillStyle = '#fff'; ctx.font = `800 58px ${FONT}`; y += 74; wrapText(ctx, trip.name, 60, y, W - 120, 66, 1);
+    const items = [['移動距離', (st.dist / 1000).toFixed(1), 'km'], ['走行時間', fmtDurJ(st.moving), ''], ['最高速度', Math.round(kmh(st.max)), 'km/h'],
+      ['平均速度', Math.round(kmh(st.avg)), 'km/h'], es ? ['獲得標高', Math.round(es.gain), 'm'] : ['休憩時間', fmtDurJ(st.rest), ''], eco ? ['燃費', eco.toFixed(1), 'km/L'] : ['総時間', fmtDurJ(st.total), '']];
+    const cw = (W - 120 - 2 * 20) / 3, chh = 150; y += 40;
+    items.forEach(([k, v, u], i) => {
+      const x = 60 + (i % 3) * (cw + 20), yy = y + Math.floor(i / 3) * (chh + 20);
+      ctx.fillStyle = '#151c26'; rrect(ctx, x, yy, cw, chh, 22); ctx.fill();
+      ctx.fillStyle = '#8f9cad'; ctx.font = `600 26px ${FONT}`; ctx.fillText(k, x + 24, yy + 44);
+      ctx.fillStyle = '#fff'; ctx.font = `800 ${String(v).length > 5 ? 40 : 52}px ${FONT}`; ctx.fillText(String(v), x + 24, yy + 112);
+      if (u) { const vw = ctx.measureText(String(v)).width; ctx.fillStyle = '#8f9cad'; ctx.font = `600 24px ${FONT}`; ctx.fillText(u, x + 30 + vw, yy + 112); }
+    });
+    y += 2 * chh + 20 + 50;
+    if (trip.memo) { ctx.fillStyle = '#c9d2dc'; ctx.font = `500 28px ${FONT}`; wrapText(ctx, trip.memo.replace(/\s+/g, ' '), 60, y, W - 120, 40, 2, true); }
+    const icon = await loadImage('icon-192.png');
+    if (icon) { ctx.save(); rrect(ctx, W - 60 - 44, H - 44 - 30, 44, 44, 10); ctx.clip(); ctx.drawImage(icon, W - 104, H - 74, 44, 44); ctx.restore(); }
+    ctx.fillStyle = '#8f9cad'; ctx.font = `700 24px ${FONT}`; ctx.textAlign = 'right'; ctx.fillText('RideLog', W - 116, H - 44); ctx.textAlign = 'left';
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .92));
+    const d = new Date(trip.start);
+    const file = new File([blob], `ride_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.jpg`, { type: 'image/jpeg' });
+    const url = URL.createObjectURL(file);
+    sheet(`<img src="${url}" style="width:100%;border-radius:12px;max-height:55vh;object-fit:contain;background:#000;margin-bottom:12px">
+      <div class="row"><button class="btn" data-a="close">閉じる</button><button class="btn" data-a="share">共有</button>${NATIVE ? '<button class="btn acc" data-a="photos">写真に保存</button>' : ''}</div>`);
+    $('#sheet').onclick = async e => {
+      const a = e.target.closest('[data-a]'); if (!a) return;
+      if (a.dataset.a === 'share') saveFile(file);
+      else if (a.dataset.a === 'photos') { try { await RP.saveImage({ path: await writeCache(file) }); a.textContent = '✓ 保存しました'; a.disabled = true; } catch { toast('保存できませんでした（設定 → RideLog → 写真）', 4500); } }
+      else { closeSheet(); URL.revokeObjectURL(url); }
+    };
+  } catch (e) { console.error(e); toast('画像を作れませんでした'); }
+  finally { btn.disabled = false; btn.textContent = '🖼 まとめ画像'; }
+}
+
+/* ================= バックアップ / 復元 ================= */
+const BK_MAGIC = 'RIDELOGBK1';
+async function makeBackup() {
+  const btn = $('#btnBackup'); btn.disabled = true; btn.textContent = '作成中…';
+  try {
+    const trips = await idbAll('trips'), photos = await idbAll('photos'), music = await idbAll('music');
+    const blobs = []; let off = 0;
+    const addBlob = b => { const o = { off, len: b.size }; blobs.push(b); off += b.size; return o; };
+    const man = { version: 1, created: Date.now(), trips, photos: [], music: [] };
+    for (const p of photos) { const { blob, thumb, ...meta } = p; meta.b = addBlob(blob); meta.th = addBlob(thumb); man.photos.push(meta); }
+    for (const m of music) { const { blob, ...meta } = m; meta.b = addBlob(blob); man.music.push(meta); }
+    const mbytes = new TextEncoder().encode(JSON.stringify(man));
+    const head = new Uint8Array(14); head.set(new TextEncoder().encode(BK_MAGIC), 0); new DataView(head.buffer).setUint32(10, mbytes.length, true);
+    const d = new Date(); const name = `RideLog_backup_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.ridelog`;
+    const parts = [head, mbytes, ...blobs];
+    if (NATIVE) {
+      // 大きなファイルでもメモリを使い切らないよう分割して書き込む
+      const all = new Blob(parts); const CH_ = 3 * 1024 * 1024; let first = true, uri = null;
+      for (let p = 0; p < all.size; p += CH_) {
+        btn.textContent = `作成中… ${Math.round(p / all.size * 100)}%`;
+        const data = await blobToB64(all.slice(p, p + CH_));
+        if (first) { uri = (await FS.writeFile({ path: name, data, directory: 'CACHE' })).uri; first = false; }
+        else await FS.appendFile({ path: name, data, directory: 'CACHE' });
+      }
+      await SHARE.share({ title: name, files: [uri] }).catch(() => {});
+    } else saveFile(new File(parts, name, { type: 'application/octet-stream' }));
+    toast(`記録${trips.length}件・写真${photos.length}枚をバックアップしました`, 4000);
+  } catch (e) { console.error(e); toast('バックアップに失敗しました'); }
+  finally { btn.disabled = false; btn.textContent = '💾 バックアップを作成'; }
+}
+async function restoreBackup(file) {
+  if (!file) return;
+  try {
+    const head = new Uint8Array(await file.slice(0, 14).arrayBuffer());
+    if (new TextDecoder().decode(head.slice(0, 10)) !== BK_MAGIC) { toast('RideLogのバックアップファイルではありません'); return; }
+    const mlen = new DataView(head.buffer).getUint32(10, true);
+    const man = JSON.parse(await file.slice(14, 14 + mlen).text()), base = 14 + mlen;
+    if (!(await ask(`記録${man.trips.length}件・写真${man.photos.length}枚を復元します。同じ記録は上書きされます。`, '復元する'))) return;
+    const part = async (o, type) => new Blob([await file.slice(base + o.off, base + o.off + o.len).arrayBuffer()], { type });
+    let i = 0;
+    for (const t of man.trips) await idbPut('trips', t.status === 'active' ? { ...t, status: 'done', end: t.end || (t.points.at(-1) || { t: t.start }).t } : t);
+    for (const p of man.photos) { toast(`復元中… 写真 ${++i}/${man.photos.length}`, 60000); const { b, th, ...meta } = p; meta.blob = await part(b, 'image/jpeg'); meta.thumb = await part(th, 'image/jpeg'); await idbPut('photos', meta); }
+    for (const m of man.music) { const { b, ...meta } = m; meta.blob = await part(b, m.type || 'audio/mpeg'); await idbPut('music', meta); }
+    toast('復元しました', 3000); renderHome();
+  } catch (e) { console.error(e); toast('復元できませんでした'); }
+}
+
+/* ================= BGM（自動作曲 + 自分の曲） ================= */
+const STYLES = [
+  { id: 'cruise', name: 'Cruise', bpm: [104, 114], drums: 'pop', arp: 'square', lead: true, pad: 'saw', bass: 'pop' },
+  { id: 'chill', name: 'Chill', bpm: [76, 86], drums: 'lofi', arp: null, lead: true, pad: 'warm', bass: 'soft', swing: .16, lofi: true, seventh: true },
+  { id: 'drive', name: 'Night Drive', bpm: [116, 124], drums: 'four', arp: 'sawtooth', lead: false, pad: 'saw', bass: 'octave' },
+  { id: 'scenery', name: 'Scenery', bpm: [68, 78], drums: null, arp: 'triangle', lead: false, pad: 'warm', bass: 'drone', seventh: true },
+  { id: 'sunny', name: 'Sunny', bpm: [92, 102], drums: 'light', arp: 'pluck', lead: true, pad: 'warm', bass: 'pop' },
+];
+const PROGS = [[0, 4, 5, 3], [5, 3, 0, 4], [0, 5, 3, 4], [3, 4, 2, 5], [0, 2, 3, 4], [1, 4, 0, 5], [0, 3, 5, 4]];
+const DRUMS = {
+  pop: { k: [0, 7, 8], s: [4, 12], h: [0, 2, 4, 6, 8, 10, 12, 14], o: [14] },
+  lofi: { k: [0, 6, 10], s: [4, 12], h: [0, 2, 4, 6, 8, 10, 12, 14], sg: .3 },
+  four: { k: [0, 4, 8, 12], s: [4, 12], h: [2, 6, 10, 14], hh: true },
+  light: { k: [0, 8], s: [12], h: [0, 2, 4, 6, 8, 10, 12, 14, 3, 7, 11, 15], hg: .045, sg: .28 },
+};
+const SCALE = [0, 2, 4, 5, 7, 9, 11];
+const mtof = m => 440 * 2 ** ((m - 69) / 12);
+function rng(seed) { return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const chordOf = (root, deg, seventh) => [0, 2, 4].concat(seventh ? [6] : []).map(k => { const d = deg + k; return root + SCALE[d % 7] + 12 * Math.floor(d / 7); });
+async function composeBgm(style, seed) {
+  const R = rng(seed), pick = a => a[Math.floor(R() * a.length)];
+  const bpm = Math.round(style.bpm[0] + R() * (style.bpm[1] - style.bpm[0]));
+  const beat = 60 / bpm, bar = beat * 4, s16 = beat / 4;
+  const key = 48 + Math.floor(R() * 8), progA = pick(PROGS), progB = pick(PROGS);
+  const INTRO = 4, BODY = 32, sr = 32000;
+  const ac = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil((INTRO + BODY + 1) * bar * sr), sampleRate: sr });
+  const master = ac.createGain(); master.gain.value = .7;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; master.connect(comp);
+  let out = comp; if (style.lofi) { const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; comp.connect(lp); out = lp; }
+  out.connect(ac.destination);
+  const n = Math.floor(sr * 2.2), ir = ac.createBuffer(2, n, sr);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (R() * 2 - 1) * (1 - i / n) ** 3; }
+  const verb = ac.createConvolver(); verb.buffer = ir; const vg = ac.createGain(); vg.gain.value = .3; verb.connect(vg); vg.connect(master);
+  const dly = ac.createDelay(2); dly.delayTime.value = beat * .75; const fb = ac.createGain(); fb.gain.value = .3; const dg = ac.createGain(); dg.gain.value = .25;
+  dly.connect(fb); fb.connect(dly); dly.connect(dg); dg.connect(master);
+  const noise = ac.createBuffer(1, sr, sr); { const d = noise.getChannelData(0); for (let i = 0; i < sr; i++) d[i] = R() * 2 - 1; }
+  const bus = (g, rv = 0, dl = 0) => { const b = ac.createGain(); b.gain.value = g; b.connect(master); if (rv) { const s = ac.createGain(); s.gain.value = rv; b.connect(s); s.connect(verb); } if (dl) { const s = ac.createGain(); s.gain.value = dl; b.connect(s); s.connect(dly); } return b; };
+  const padB = bus(.42, .6), bassB = bus(.85), drumB = bus(.75, .06), arpB = bus(.38, .3, .55), leadB = bus(.42, .35, .3);
+  const tone = (dest, type, f, t, d, { a = .01, r = .12, g = .3, cut = 0, det = 0, pluck = false, slide = 0 } = {}) => {
+    const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); if (det) o.detune.value = det;
+    if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
+    const e = ac.createGain(), G = e.gain; G.setValueAtTime(.0001, t); G.linearRampToValueAtTime(g, t + a);
+    if (pluck) G.exponentialRampToValueAtTime(.0001, t + d); else { G.setValueAtTime(g, t + Math.max(a, d)); G.linearRampToValueAtTime(.0001, t + d + r); }
+    let node = o; if (cut) { const fl = ac.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = cut; o.connect(fl); node = fl; }
+    node.connect(e); e.connect(dest); o.start(t); o.stop(t + d + r + .05);
+  };
+  const nz = (t, d, type, f, g, q = 1) => { const s = ac.createBufferSource(); s.buffer = noise; const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const e = ac.createGain(); e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(.0001, t + d); s.connect(fl); fl.connect(e); e.connect(drumB); s.start(t, R() * .6); s.stop(t + d + .02); };
+  const kick = (t, g = 1) => { const o = ac.createOscillator(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + .14); const e = ac.createGain(); e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(.001, t + .38); o.connect(e); e.connect(drumB); o.start(t); o.stop(t + .42); };
+  const snare = (t, g = .5) => { nz(t, .17, 'bandpass', 1900, g, .8); tone(drumB, 'triangle', 185, t, .09, { a: .002, g: g * .6, pluck: true }); };
+  const hat = (t, g = .1, open = false) => nz(t, open ? .22 : .045, 'highpass', 7600, g);
+  const pent = [0, 2, 4, 7, 9];
+  const leadPool = []; for (let m = key + 12; m <= key + 33; m++) if (pent.includes(((m - key) % 12 + 12) % 12)) leadPool.push(m);
+  const rhythms = [[[0, 2], [2, 1], [3, 1], [4, 3]], [[0, 1], [1, 1], [2, 2], [5, 1], [6, 2]], [[0, 3], [3, 1], [4, 2], [6, 2]], [[1, 1], [2, 1], [3, 1], [4, 4]]];
+  const motif = [pick(rhythms), pick(rhythms)];
+  let lastLead = leadPool[Math.floor(leadPool.length / 2)];
+  const arpPat = pick([[0, 1, 2, 3, 4, 3, 2, 1], [0, 2, 1, 3, 2, 4, 3, 5], [0, 1, 2, 4, 2, 1, 0, 1]]);
+  const dr = style.drums ? DRUMS[style.drums] : null;
+  for (let b = 0; b < INTRO + BODY; b++) {
+    const t0 = b * bar, body = b >= INTRO, sec = body ? (b - INTRO < 16 ? 'A' : 'B') : 'I';
+    const prog = sec === 'B' ? progB : progA, deg = prog[b % 4];
+    const ch = chordOf(key, deg, style.seventh);
+    // pad
+    for (const m of ch) {
+      if (style.pad === 'saw') { tone(padB, 'sawtooth', mtof(m), t0, bar, { a: .35, r: .6, g: .045, cut: 1300, det: -8 }); tone(padB, 'sawtooth', mtof(m), t0, bar, { a: .35, r: .6, g: .045, cut: 1300, det: 8 }); }
+      else { tone(padB, 'triangle', mtof(m), t0, bar, { a: .4, r: .7, g: .07 }); tone(padB, 'sine', mtof(m + 12), t0, bar, { a: .5, r: .7, g: .03 }); }
+    }
+    if (body || style.bass === 'drone') {
+      const root = key - 12 + SCALE[deg % 7];
+      if (style.bass === 'drone') tone(bassB, 'sine', mtof(root), t0, bar, { a: .3, r: .4, g: .32 });
+      else if (style.bass === 'soft') { tone(bassB, 'sine', mtof(root), t0, beat * 1.8, { a: .02, g: .4 }); tone(bassB, 'sine', mtof(root), t0 + beat * 2.5, beat * 1.3, { a: .02, g: .32 }); }
+      else if (style.bass === 'octave') for (let i = 0; i < 8; i++) tone(bassB, 'sawtooth', mtof(root + (i % 2 ? 12 : 0)), t0 + i * beat / 2, beat * .42, { a: .005, r: .05, g: .2, cut: 700 });
+      else for (const i of [0, 3, 4, 6]) tone(bassB, 'triangle', mtof(root), t0 + i * beat / 2, beat * .45, { a: .005, r: .06, g: .45, cut: 900 });
+    }
+    // arp / pluck
+    if (style.arp && (body || style.id === 'scenery' || style.id === 'drive')) {
+      const tones = ch.concat(ch.map(m => m + 12));
+      if (style.arp === 'pluck') { for (const i of [0, 3, 4, 6]) ch.forEach((m, k) => tone(arpB, 'triangle', mtof(m + 12), t0 + i * beat / 2 + k * .018, .7, { a: .004, g: .09, pluck: true })); }
+      else { const slow = style.id === 'scenery'; const stepT = slow ? beat / 2 : s16; const cnt = slow ? 8 : 16; const g0 = body ? .07 : .045;
+        for (let i = 0; i < cnt; i++) tone(arpB, style.arp, mtof(tones[arpPat[i % 8] % tones.length] + 12), t0 + i * stepT, stepT * (slow ? 1.6 : .9), { a: .004, g: style.arp === 'square' ? g0 * .7 : g0, pluck: true, cut: 2600 }); }
+    }
+    // drums
+    if (dr && body) {
+      const full = sec === 'B';
+      for (let i = 0; i < 16; i++) {
+        const sw = (style.swing && i % 4 === 2) ? style.swing * 2 * s16 : 0, t = t0 + i * s16 + sw;
+        if (dr.k.includes(i)) kick(t, style.drums === 'lofi' ? .8 : 1);
+        if (dr.s.includes(i) && (full || style.drums !== 'four' || true)) snare(t, dr.sg || .5);
+        if (dr.h.includes(i)) hat(t, (dr.hg || .1) * (full ? 1 : .75), dr.o && dr.o.includes(i) && full);
+        if (dr.hh && full && !dr.h.includes(i)) hat(t, .035);
+      }
+      if ((b - INTRO) % 8 === 7) for (const i of [12, 13, 14, 15]) snare(t0 + i * s16, .28); // フィル
+    }
+    // lead（Bセクション）
+    if (style.lead && sec === 'B') {
+      const rh = motif[(b - INTRO) % 2];
+      rh.forEach(([st8, len8], j) => {
+        let m;
+        if (j === 0) { const cands = leadPool.filter(x => ch.some(c => (x - c) % 12 === 0)); m = cands.reduce((p, x) => Math.abs(x - lastLead) < Math.abs(p - lastLead) ? x : p, cands[0] || lastLead); }
+        else { const i = leadPool.indexOf(lastLead); const step = pick([-2, -1, -1, 1, 1, 2, 0]); m = leadPool[Math.max(0, Math.min(leadPool.length - 1, (i < 0 ? 4 : i) + step))]; }
+        lastLead = m;
+        tone(leadB, 'triangle', mtof(m), t0 + st8 * beat / 2, len8 * beat / 2 * .92, { a: .02, r: .12, g: .12 });
+        tone(leadB, 'sine', mtof(m + 12), t0 + st8 * beat / 2, len8 * beat / 2 * .92, { a: .02, r: .12, g: .03 });
+      });
+    }
+  }
+  const buf = await ac.startRendering();
+  // ループの継ぎ目：最後の1小節の残響をループ先頭に重ねる
+  const loopS = Math.floor(INTRO * bar * sr), loopE = Math.floor((INTRO + BODY) * bar * sr), tailN = buf.length - loopE;
+  for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < tailN; i++) d[loopS + i] += d[loopE + i]; }
+  return { buffer: buf, loopStart: INTRO * bar, loopEnd: (INTRO + BODY) * bar, bpm };
+}
+const AU = { ctx: null, gain: null, track: null, src: null, recDest: null, muted: false, lastKey: null };
+function audioCtx() {
+  if (!AU.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; AU.ctx = new C(); AU.gain = AU.ctx.createGain(); AU.gain.connect(AU.ctx.destination); }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  return AU.ctx;
+}
+function audioStart(t) {
+  audioStop(); const tr = AU.track; if (!tr || AU.muted || !AU.ctx) return;
+  const ac = AU.ctx, src = ac.createBufferSource(); src.buffer = tr.buffer; src.loop = true; src.loopStart = tr.loopStart; src.loopEnd = tr.loopEnd;
+  const env = ac.createGain(); src.connect(env); env.connect(AU.gain); if (AU.recDest) env.connect(AU.recDest);
+  const off = t < tr.loopEnd ? t : tr.loopStart + ((t - tr.loopStart) % (tr.loopEnd - tr.loopStart));
+  const now = ac.currentTime, rem = Math.max(.1, P.total - t), G = env.gain;
+  if (t < .05) { G.setValueAtTime(0, now); G.linearRampToValueAtTime(tr.vol, now + Math.min(1, rem / 2)); } else G.setValueAtTime(tr.vol, now);
+  const fo = Math.max(Math.min(1, rem / 2), rem - 2.5); G.setValueAtTime(tr.vol, now + fo); G.linearRampToValueAtTime(0, now + rem);
+  src.start(now, off); AU.src = src;
+}
+function audioStop() { try { AU.src && AU.src.stop(); } catch {} AU.src = null; }
+async function songsAll() { try { return await idbAll('music'); } catch { return []; } }
+async function chooseTrack() {
+  const sel = $('#ssBgm').value || 'random';
+  if (sel === 'off' || !audioCtx()) { AU.track = null; $('#bgmName').textContent = 'BGMなし'; return; }
+  $('#bgmName').textContent = '♪ 準備中…';
+  let pool = [];
+  if (sel === 'random') { pool = STYLES.map(s => ({ kind: 'style', s })); (await songsAll()).forEach(m => pool.push({ kind: 'song', m })); }
+  else if (sel.startsWith('style:')) pool = [{ kind: 'style', s: STYLES.find(x => 'style:' + x.id === sel) }];
+  else { const m = await idbGet('music', sel.slice(5)); if (m) pool = [{ kind: 'song', m }]; }
+  if (!pool.length) { AU.track = null; return; }
+  const keyOf = c => c.kind === 'style' ? 'style:' + c.s.id : 'song:' + c.m.id;
+  const cands = pool.length > 1 ? pool.filter(c => keyOf(c) !== AU.lastKey) : pool;
+  const c = cands[Math.floor(Math.random() * cands.length)];
+  $('#bgmName').textContent = '♪ 準備中…';
+  try {
+    if (c.kind === 'style') { const r = await composeBgm(c.s, Math.floor(Math.random() * 1e9)); AU.track = { ...r, vol: .9, name: `♪ ${c.s.name}（自動作曲・${r.bpm}BPM）` }; }
+    else { const buf = await AU.ctx.decodeAudioData(await c.m.blob.arrayBuffer()); AU.track = { buffer: buf, loopStart: 0, loopEnd: buf.duration, vol: .8, name: '♪ ' + c.m.name }; }
+    AU.lastKey = keyOf(c);
+  } catch (e) { console.error(e); AU.track = null; toast('BGMを準備できませんでした'); }
+  $('#bgmName').textContent = AU.track ? AU.track.name : 'BGMなし';
+}
+async function renderSongs() {
+  const songs = await songsAll();
+  const el = $('#songList');
+  el.innerHTML = songs.length ? '' : '<div class="muted" style="font-size:13px">追加した曲はありません</div>';
+  for (const m of songs) {
+    const d = document.createElement('div'); d.className = 'songrow';
+    d.innerHTML = `<span>🎵 ${esc(m.name)}</span><button class="btn" style="padding:4px 10px">✕</button>`;
+    d.querySelector('button').onclick = async () => { if (await ask(`「${esc(m.name)}」を削除しますか？`, '削除', true)) { await idbDel('music', m.id); renderSongs(); } };
+    el.appendChild(d);
+  }
+  const sel = $('#ssBgm'), cur = sel.value || store.get('bgm', 'random');
+  sel.innerHTML = `<option value="random">ランダム（自動作曲＋追加曲）</option><option value="off">なし</option>` +
+    STYLES.map(s => `<option value="style:${s.id}">自動作曲：${s.name}</option>`).join('') +
+    songs.map(m => `<option value="song:${m.id}">${esc(m.name)}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : 'random';
+}
+async function addSongs(files) {
+  let n = 0;
+  for (const f of files) { if (!f.type.startsWith('audio') && !/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(f.name)) continue; await idbPut('music', { id: 'm' + Date.now() + Math.random().toString(36).slice(2, 6), name: f.name.replace(/\.[^.]+$/, ''), type: f.type || 'audio/mpeg', blob: f }); n++; }
+  toast(n ? `${n}曲を追加しました` : '音楽ファイルを選んでください'); renderSongs();
+}
+
 /* ================= slideshow ================= */
 const FONT = '-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif';
-const P = { slides: [], total: 0, t: 0, playing: false, last: 0, cache: new Map(), loading: new Set(), W: 1920, H: 1080, rec: null, onEnd: null };
-const XF = .8; // crossfade sec
+const P = { slides: [], total: 0, t: 0, playing: false, last: 0, cache: new Map(), loading: new Set(), W: 1920, H: 1080, rec: null, onEnd: null, big: null, mini: null, stalled: false };
+const xfOf = s => Math.min(.8, s.dur * .3); // 切り替え（クロスフェード）時間
 
 function buildSlides() {
   const trip = S.detail, D = +$('#ssDur').value;
-  const slides = [{ type: 'title', dur: 4 }];
+  const slides = [{ type: 'title', dur: 4.5 }];
   for (const p of S.photos) slides.push({ type: 'photo', dur: D, p });
-  slides.push({ type: 'end', dur: 5 });
+  slides.push({ type: 'end', dur: 5.5 });
   let t = 0; for (const s of slides) { s.t0 = t; t += s.dur; }
   P.slides = slides; P.total = t;
   const v = $('#ssAspect').value === 'v';
   P.W = v ? 1080 : 1920; P.H = v ? 1920 : 1080;
   const c = $('#stage'); c.width = P.W; c.height = P.H;
-  P.trip = trip;
+  P.trip = trip; P.showMap = $('#ssMap').checked;
 }
+async function prepareMaps() {
+  const trip = P.trip, pts = trip.points;
+  const key = `${trip.id}|${P.W}x${P.H}`;
+  if (P.mapKey !== key) {
+    P.big = await baseMap(pts, P.W, P.H, { fill: .62, style: 'std' });
+    P.big.pp = thin(goodPts(pts), 1500).map(p => [...P.big.proj(p.lat, p.lon), p.t]);
+    const M = 360;
+    P.mini = await baseMap(pts, M, M, { fill: .78, style: 'pale' });
+    P.mini.M = M;
+    P.mini.pp = thin(goodPts(pts), 700).map(p => [...P.mini.proj(p.lat, p.lon), p.t]);
+    const mctx = P.mini.canvas.getContext('2d');
+    if (!P.mini.ok) { mctx.fillStyle = 'rgba(255,255,255,.04)'; mctx.fillRect(0, 0, M, M); }
+    strokePath(mctx, P.mini.pp, 3, P.mini.ok ? 'rgba(90,100,115,.75)' : 'rgba(160,170,185,.55)', P.mini.pp.length, 1, false);
+    P.mapKey = key;
+  }
+  for (const s of P.slides) if (s.type === 'photo') {
+    const p = s.p;
+    s.mi = p.t != null ? idxAt(P.mini.pp, p.t) : P.mini.pp.length - 1;
+    s.mpos = p.lat != null ? P.mini.proj(p.lat, p.lon) : (P.mini.pp[s.mi] || null);
+  }
+}
+function slideIndex(t) { const i = P.slides.findIndex(s => t < s.t0 + s.dur); return i < 0 ? P.slides.length - 1 : i; }
 function needed(t) {
   const i = slideIndex(t), ids = [];
-  for (let k = i; k <= i + 2 && k < P.slides.length; k++) if (P.slides[k].type === 'photo') ids.push(P.slides[k].p.id);
+  for (let k = i; k <= i + 4 && k < P.slides.length; k++) if (P.slides[k].type === 'photo') ids.push(P.slides[k].p.id);
   return ids;
 }
-function slideIndex(t) { let i = P.slides.findIndex(s => t < s.t0 + s.dur); return i < 0 ? P.slides.length - 1 : i; }
 function ensureLoaded(t) {
   const ids = needed(t);
   for (const id of ids) if (!P.cache.has(id) && !P.loading.has(id)) {
@@ -755,129 +1444,144 @@ function ensureLoaded(t) {
     const p = S.photos.find(x => x.id === id);
     createImageBitmap(p.blob).then(bm => P.cache.set(id, bm)).catch(() => P.cache.set(id, null)).finally(() => P.loading.delete(id));
   }
-  if (P.cache.size > 4) for (const [id, bm] of [...P.cache]) if (!ids.includes(id)) { try { bm && bm.close(); } catch {} P.cache.delete(id); }
+  if (P.cache.size > 8) for (const [id, bm] of [...P.cache]) if (!ids.includes(id)) { try { bm && bm.close(); } catch {} P.cache.delete(id); }
   return ids.slice(0, 2).every(id => P.cache.has(id));
 }
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-function drawRoute(ctx, pts, x, y, w, h, opts = {}) {
-  const g = pts.filter(p => p.acc <= 50); if (g.length < 2) return null;
-  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-  for (const p of g) { minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat); minLon = Math.min(minLon, p.lon); maxLon = Math.max(maxLon, p.lon); }
-  const k = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
-  const gw = Math.max(1e-6, (maxLon - minLon) * k), gh = Math.max(1e-6, maxLat - minLat);
-  const s = Math.min(w / gw, h / gh);
-  const ox = x + (w - gw * s) / 2, oy = y + (h - gh * s) / 2;
-  const pr = p => [ox + (p.lon - minLon) * k * s, oy + (maxLat - p.lat) * s];
-  ctx.save();
-  ctx.lineJoin = ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,138,31,.25)'; ctx.lineWidth = opts.lw * 3;
-  ctx.beginPath(); g.forEach((p, i) => { const [a, b] = pr(p); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke();
-  const grd = ctx.createLinearGradient(x, y, x + w, y + h); grd.addColorStop(0, '#ff7a1a'); grd.addColorStop(1, '#ffc24a');
-  ctx.strokeStyle = grd; ctx.lineWidth = opts.lw; ctx.stroke();
-  const [sx, sy] = pr(g[0]), [ex, ey] = pr(g.at(-1));
-  ctx.fillStyle = '#3ecf8e'; ctx.beginPath(); ctx.arc(sx, sy, opts.lw * 1.6, 0, 7); ctx.fill();
-  ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(ex, ey, opts.lw * 1.6, 0, 7); ctx.fill();
-  if (opts.photos) { ctx.fillStyle = '#fff'; for (const p of opts.photos) if (p.lat != null) { const [a, b] = pr(p); ctx.beginPath(); ctx.arc(a, b, opts.lw * .9, 0, 7); ctx.fill(); } }
-  ctx.restore();
-  return true;
+function wrapText(ctx, text, x, y, maxW, lh, maxLines, ellipsis = false) {
+  let line = '', n = 0, i = 0; const chars = [...text];
+  for (; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ctx.measureText(line + ch).width > maxW && line) {
+      if (n >= maxLines - 1) break;
+      ctx.fillText(line, x, y + n * lh); line = ch; n++;
+    } else line += ch;
+  }
+  if (i < chars.length && ellipsis) { while (line && ctx.measureText(line + '…').width > maxW) line = line.slice(0, -1); line += '…'; }
+  ctx.fillText(line, x, y + n * lh);
 }
-function bgFill(ctx, W, H) {
-  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1b2633'); g.addColorStop(1, '#07090d');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+function drawBigMap(ctx, W, H, shade) {
+  if (P.big) ctx.drawImage(P.big.canvas, 0, 0, W, H); else darkBg(ctx, W, H);
+  ctx.fillStyle = `rgba(7,10,15,${P.big && P.big.ok ? shade : shade * .4})`; ctx.fillRect(0, 0, W, H);
 }
 function drawTitle(ctx, W, H, local, dur) {
   const trip = P.trip, st = trip.stats, v = H > W, u = Math.min(W, H) / 100;
-  bgFill(ctx, W, H);
-  const rb = v ? [W * .1, H * .38, W * .8, H * .5] : [W * .48, H * .12, W * .46, H * .76];
-  drawRoute(ctx, trip.points, ...rb, { lw: u * .9, photos: S.photos });
-  const tx = v ? W * .08 : W * .07, ty = v ? H * .12 : H * .3;
+  drawBigMap(ctx, W, H, .28);
+  // ルートを描きながら表示
+  const pp = P.big ? P.big.pp : [];
+  const prog = Math.min(1, Math.max(0, (local - .3) / (dur * .7)));
+  const upto = Math.max(2, Math.floor(pp.length * prog));
+  strokePath(ctx, pp, u * .9, '#ff8a1f', upto);
+  if (pp.length > 1) {
+    dot(ctx, pp[0][0], pp[0][1], u * 1.5, '#1f9d55');
+    const tNow = pp[Math.min(upto, pp.length) - 1][2];
+    for (const ph of S.photos) if (ph.lat != null && ph.t <= tNow) { const [x, y] = P.big.proj(ph.lat, ph.lon); dot(ctx, x, y, u * .9, '#ffd08a'); }
+    const e = pp[Math.min(upto, pp.length) - 1]; dot(ctx, e[0], e[1], u * 1.3, prog >= 1 ? '#d64545' : '#ff8a1f');
+  }
+  // 文字の下地
+  const g = v ? ctx.createLinearGradient(0, 0, 0, H * .42) : ctx.createLinearGradient(0, 0, W * .55, 0);
+  g.addColorStop(0, 'rgba(7,10,15,.88)'); g.addColorStop(1, 'rgba(7,10,15,0)');
+  ctx.fillStyle = g; v ? ctx.fillRect(0, 0, W, H * .42) : ctx.fillRect(0, 0, W * .55, H);
+  const tx = v ? W * .08 : W * .06, ty = v ? H * .1 : H * .34;
+  ctx.globalAlpha *= Math.min(1, local / .6);
   ctx.fillStyle = '#ff9a2a'; ctx.font = `700 ${u * 3.4}px ${FONT}`; ctx.textBaseline = 'alphabetic';
   ctx.fillText(fmtDate(trip.start), tx, ty);
-  ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 7.4}px ${FONT}`;
-  wrapText(ctx, trip.name, tx, ty + u * 10, v ? W * .84 : W * .4, u * 8.6, 2);
-  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `600 ${u * 3.4}px ${FONT}`;
-  ctx.fillText(`${fmtHM(trip.start)} – ${fmtHM(trip.end)}   ${(st.dist/1000).toFixed(1)} km`, tx, ty + u * (v ? 22 : 30));
-}
-function wrapText(ctx, text, x, y, maxW, lh, maxLines) {
-  let line = '', n = 0;
-  for (const ch of text) {
-    if (ctx.measureText(line + ch).width > maxW && line && n < maxLines - 1) { ctx.fillText(line, x, y + n * lh); line = ch; n++; }
-    else line += ch;
-  }
-  ctx.fillText(line, x, y + n * lh);
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 7}px ${FONT}`;
+  wrapText(ctx, trip.name, tx, ty + u * 9.5, v ? W * .84 : W * .42, u * 8.2, 2, true);
+  ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = `600 ${u * 3.3}px ${FONT}`;
+  ctx.fillText(`${fmtHM(trip.start)} – ${fmtHM(trip.end)}　${(st.dist / 1000).toFixed(1)} km`, tx, ty + u * 27);
 }
 function drawEnd(ctx, W, H) {
   const trip = P.trip, st = trip.stats, v = H > W, u = Math.min(W, H) / 100;
-  bgFill(ctx, W, H);
-  ctx.globalAlpha = .35; drawRoute(ctx, trip.points, W * .08, H * .08, W * .84, H * .84, { lw: u * .7 }); ctx.globalAlpha = 1;
-  const items = [['移動距離', (st.dist/1000).toFixed(1), 'km'], ['最高速度', Math.round(kmh(st.max)), 'km/h'], ['平均速度', Math.round(kmh(st.avg)), 'km/h'],
-    ['総時間', fmtDurJ(st.total), ''], ['走行時間', fmtDurJ(st.moving), ''], ['休憩時間', fmtDurJ(st.rest), '']];
+  drawBigMap(ctx, W, H, .5);
+  if (P.big) strokePath(ctx, P.big.pp, u * .6, 'rgba(255,138,31,.75)');
+  const es = trip.elev ? elevStats(trip.elev.pts) : null;
+  const items = [['移動距離', (st.dist / 1000).toFixed(1), 'km'], ['最高速度', Math.round(kmh(st.max)), 'km/h'], ['平均速度', Math.round(kmh(st.avg)), 'km/h'],
+    ['走行時間', fmtDurJ(st.moving), ''], ['休憩時間', fmtDurJ(st.rest), ''], es ? ['獲得標高', Math.round(es.gain), 'm'] : ['総時間', fmtDurJ(st.total), '']];
   const cols = v ? 2 : 3, rows = Math.ceil(items.length / cols);
-  const cw = v ? W * .4 : W * .26, ch = u * 17, gx = u * 2.4;
-  const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2, y0 = (H - (rows * ch + (rows - 1) * gx)) / 2 + u * 4;
-  ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 5}px ${FONT}`; ctx.textAlign = 'center';
-  ctx.fillText(trip.name, W / 2, y0 - u * 6);
+  const cw = v ? W * .4 : W * .25, ch = u * 16, gx = u * 2.2;
+  const memo = (trip.memo || '').replace(/\s+/g, ' ').trim();
+  const blockH = rows * ch + (rows - 1) * gx + (memo ? u * 12 : 0);
+  const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2, y0 = (H - blockH) / 2 + u * 3;
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = `800 ${u * 4.8}px ${FONT}`;
+  ctx.fillText(trip.name, W / 2, y0 - u * 5);
   items.forEach(([k, val, un], i) => {
     const x = x0 + (i % cols) * (cw + gx), y = y0 + Math.floor(i / cols) * (ch + gx);
-    ctx.fillStyle = 'rgba(21,28,38,.85)'; rrect(ctx, x, y, cw, ch, u * 2); ctx.fill();
-    ctx.fillStyle = '#8f9cad'; ctx.font = `600 ${u * 2.6}px ${FONT}`; ctx.fillText(k, x + cw / 2, y + u * 5.6);
-    ctx.fillStyle = '#fff'; ctx.font = `800 ${u * (String(val).length > 6 ? 4.4 : 5.6)}px ${FONT}`;
-    ctx.fillText(val + (un ? ' ' + un : ''), x + cw / 2, y + u * 12.6);
+    ctx.fillStyle = 'rgba(15,20,28,.86)'; rrect(ctx, x, y, cw, ch, u * 2); ctx.fill();
+    ctx.fillStyle = '#8f9cad'; ctx.font = `600 ${u * 2.5}px ${FONT}`; ctx.fillText(k, x + cw / 2, y + u * 5.2);
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${u * (String(val).length > 6 ? 4.2 : 5.4)}px ${FONT}`;
+    ctx.fillText(val + (un ? ' ' + un : ''), x + cw / 2, y + u * 12);
   });
+  if (memo) { ctx.fillStyle = 'rgba(238,242,246,.9)'; ctx.font = `500 ${u * 2.8}px ${FONT}`; ctx.textAlign = 'left';
+    const mw = cols * cw + (cols - 1) * gx; wrapText(ctx, '“' + memo + '”', x0, y0 + rows * ch + (rows - 1) * gx + u * 6, mw, u * 4, 2, true); }
   ctx.textAlign = 'left';
 }
 function drawPhoto(ctx, W, H, s, local) {
   const bm = P.cache.get(s.p.id);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   if (!bm) return;
-  const prog = Math.min(1, Math.max(0, (local + XF) / (s.dur + XF)));
-  const iw = bm.width, ih = bm.height;
-  const ar = iw / ih, car = W / H;
-  const similar = Math.abs(Math.log(ar / car)) < .25;
-  // 背景（ぼかし or 暗く拡大）
+  const xf = xfOf(s), prog = Math.min(1, Math.max(0, (local + xf) / (s.dur + xf)));
+  const iw = bm.width, ih = bm.height, similar = Math.abs(Math.log((iw / ih) / (W / H))) < .25;
   if (!similar) {
     const sc = Math.max(W / iw, H / ih) * 1.1;
     ctx.save();
-    if (typeof ctx.filter === 'string') ctx.filter = 'blur(28px) brightness(.55)';
-    else ctx.globalAlpha = .35;
+    if (typeof ctx.filter === 'string') ctx.filter = 'blur(28px) brightness(.55)'; else ctx.globalAlpha *= .35;
     ctx.drawImage(bm, (W - iw * sc) / 2, (H - ih * sc) / 2, iw * sc, ih * sc);
     ctx.restore();
   }
   const base = similar ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
-  const z = 1 + .07 * prog;
+  const sc = base * (1 + .07 * prog), w = iw * sc, h = ih * sc;
   const dir = (s.t0 * 7) % 2 < 1 ? 1 : -1;
-  const sc = base * z, w = iw * sc, h = ih * sc;
-  const dx = (similar ? (w - W) / 2 * .6 * (prog - .5) * dir : 0);
+  const dx = similar ? (w - W) / 2 * .6 * (prog - .5) * dir : 0;
   ctx.drawImage(bm, (W - w) / 2 + dx, (H - h) / 2, w, h);
-  // 右下スタンプ：撮影時刻 + 大まかな地点
+  // 右下：撮影日時・地名＋ミニ地図
   const u = Math.min(W, H) / 100;
-  const l1 = s.p.t ? `${fmtDate(s.p.t)} ${fmtHM(s.p.t)}` : '';
-  const l2 = s.p.place || '';
-  if (!l1 && !l2) return;
-  const f1 = u * 3.6, f2 = u * 3.0, padX = u * 2, padY = u * 1.6, gap = u * 1;
-  ctx.font = `700 ${f1}px ${FONT}`; const w1 = l1 ? ctx.measureText(l1).width : 0;
-  ctx.font = `600 ${f2}px ${FONT}`; const w2 = l2 ? ctx.measureText('📍 ' + l2).width : 0;
-  const bw = Math.max(w1, w2) + padX * 2, bh = padY * 2 + (l1 ? f1 : 0) + (l2 ? f2 : 0) + (l1 && l2 ? gap : 0);
-  const bx = W - bw - u * 3, by = H - bh - u * 3;
-  ctx.fillStyle = 'rgba(0,0,0,.45)'; rrect(ctx, bx, by, bw, bh, u * 1.4); ctx.fill();
-  ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = u * .6;
-  let ty = by + padY;
-  if (l1) { ctx.fillStyle = '#fff'; ctx.font = `700 ${f1}px ${FONT}`; ctx.fillText(l1, bx + bw - padX, ty); ty += f1 + gap; }
-  if (l2) { ctx.fillStyle = '#ffd08a'; ctx.font = `600 ${f2}px ${FONT}`; ctx.fillText('📍 ' + l2, bx + bw - padX, ty); }
-  ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const l1 = s.p.t ? `${fmtDate(s.p.t)} ${fmtHM(s.p.t)}` : '', l2 = s.p.place || '';
+  const f1 = u * 3.4, f2 = u * 2.9, padX = u * 2, padY = u * 1.5, gap = u * .9;
+  let bx = W - u * 3, by = H - u * 3, bw = 0, bh = 0;
+  if (l1 || l2) {
+    ctx.font = `700 ${f1}px ${FONT}`; const w1 = l1 ? ctx.measureText(l1).width : 0;
+    ctx.font = `600 ${f2}px ${FONT}`; const w2 = l2 ? ctx.measureText('📍 ' + l2).width : 0;
+    bw = Math.max(w1, w2) + padX * 2; bh = padY * 2 + (l1 ? f1 : 0) + (l2 ? f2 : 0) + (l1 && l2 ? gap : 0);
+  }
+  const m = Math.round(u * 27);
+  if (P.showMap && P.mini && s.mpos) {
+    const mx = W - u * 3 - m, my = by - bh - (bh ? u * 1.2 : 0) - m;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = u * 1.2; rrect(ctx, mx, my, m, m, u * 1.6); ctx.fillStyle = '#0b0f15'; ctx.fill(); ctx.restore();
+    ctx.save(); rrect(ctx, mx, my, m, m, u * 1.6); ctx.clip();
+    const k = m / P.mini.M; ctx.translate(mx, my);
+    ctx.drawImage(P.mini.canvas, 0, 0, m, m);
+    strokePath(ctx, P.mini.pp, u * .55, '#ff8a1f', s.mi + 1, k, true);
+    const [px, py] = s.mpos, pulse = (((local % 1.4) + 1.4) % 1.4) / 1.4;
+    ctx.beginPath(); ctx.arc(px * k, py * k, u * (1 + pulse * 2.2), 0, 7); ctx.fillStyle = `rgba(255,90,60,${.45 * (1 - pulse)})`; ctx.fill();
+    dot(ctx, px * k, py * k, u * 1.05, '#ff3b30');
+    ctx.restore();
+    ctx.save(); rrect(ctx, mx, my, m, m, u * 1.6); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = Math.max(2, u * .25); ctx.stroke(); ctx.restore();
+  }
+  if (bw) {
+    const x = bx - bw, y = by - bh;
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; rrect(ctx, x, y, bw, bh, u * 1.4); ctx.fill();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = u * .6;
+    let ty = y + padY;
+    if (l1) { ctx.fillStyle = '#fff'; ctx.font = `700 ${f1}px ${FONT}`; ctx.fillText(l1, bx - padX, ty); ty += f1 + gap; }
+    if (l2) { ctx.fillStyle = '#ffd08a'; ctx.font = `600 ${f2}px ${FONT}`; ctx.fillText('📍 ' + l2, bx - padX, ty); }
+    ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
 }
 function drawSlide(ctx, s, local) {
   const { W, H } = P;
+  ctx.save();
   if (s.type === 'title') drawTitle(ctx, W, H, local, s.dur);
   else if (s.type === 'end') drawEnd(ctx, W, H);
   else drawPhoto(ctx, W, H, s, local);
+  ctx.restore();
 }
 function renderAt(t) {
   const ctx = $('#stage').getContext('2d');
-  const i = slideIndex(t), s = P.slides[i], local = t - s.t0;
+  const i = slideIndex(t), s = P.slides[i], local = t - s.t0, xf = xfOf(s);
   ctx.globalAlpha = 1; drawSlide(ctx, s, local);
   const n = P.slides[i + 1];
-  if (n && local > s.dur - XF) { ctx.globalAlpha = (local - (s.dur - XF)) / XF; drawSlide(ctx, n, local - s.dur); ctx.globalAlpha = 1; }
+  if (n && local > s.dur - xf) { ctx.globalAlpha = (local - (s.dur - xf)) / xf; drawSlide(ctx, n, local - s.dur); ctx.globalAlpha = 1; }
   const fade = t < .6 ? 1 - t / .6 : t > P.total - .8 ? (t - (P.total - .8)) / .8 : 0;
   if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, fade)})`; ctx.fillRect(0, 0, P.W, P.H); }
   $('#progBar').style.width = (t / P.total * 100) + '%';
@@ -885,23 +1589,30 @@ function renderAt(t) {
 function loop(ts) {
   if (!P.playing) return;
   const dt = P.last ? Math.min(.1, (ts - P.last) / 1000) : 0; P.last = ts;
-  if (ensureLoaded(P.t)) P.t += dt;
-  renderAt(Math.min(P.t, P.total - .001));
-  if (P.t >= P.total) { P.playing = false; $('#pPlay').textContent = '▶'; if (P.onEnd) { const f = P.onEnd; P.onEnd = null; f(); } return; }
+  const ready = ensureLoaded(P.t);
+  if (ready) { if (P.stalled) { P.stalled = false; AU.ctx && AU.ctx.resume(); } P.t += dt; }
+  else if (!P.stalled) { P.stalled = true; AU.ctx && AU.ctx.suspend(); } // 写真の読み込み待ちの間は音も止めて同期を保つ
+  try { renderAt(Math.min(P.t, P.total - .001)); } catch (e) { console.error(e); }
+  if (P.t >= P.total) { P.playing = false; audioStop(); $('#pPlay').textContent = '▶'; if (P.onEnd) { const f = P.onEnd; P.onEnd = null; f(); } return; }
   requestAnimationFrame(loop);
 }
-function play() { P.playing = true; P.last = 0; $('#pPlay').textContent = '⏸'; requestAnimationFrame(loop); }
-function pause() { P.playing = false; $('#pPlay').textContent = '▶'; }
+function play() { P.playing = true; P.last = 0; P.stalled = false; if (AU.ctx) AU.ctx.resume(); audioStart(P.t); $('#pPlay').textContent = '⏸'; requestAnimationFrame(loop); }
+function pause() { P.playing = false; audioStop(); $('#pPlay').textContent = '▶'; }
 async function openPlayer() {
   if (!S.detail) return;
+  const ac = audioCtx(); if (ac) ac.resume().catch(() => {}); // iOSはタップの直後に音声を有効化する必要がある
   const btn = $('#btnPlay'); btn.disabled = true;
   try {
     await resolvePlaces((i, n) => btn.textContent = `地名を取得中… ${i}/${n}`);
-  } finally { btn.disabled = false; btn.textContent = '▶ スライドショー'; }
-  renderPhotos();
-  buildSlides();
+    renderPhotos();
+    buildSlides();
+    btn.textContent = '地図を準備中…'; await prepareMaps();
+    btn.textContent = 'BGMを準備中…'; store.set('bgm', $('#ssBgm').value); await chooseTrack();
+  } catch (e) { console.error(e); toast('スライドショーの準備でエラーが起きました'); }
+  finally { btn.disabled = false; btn.textContent = '▶ スライドショー'; }
   P.cache.forEach(b => { try { b && b.close(); } catch {} }); P.cache.clear();
   P.t = 0;
+  $('#pMute').textContent = AU.muted ? '🔇' : '🔊';
   $('#player').classList.add('on');
   play();
 }
@@ -909,30 +1620,46 @@ function closePlayer() {
   pause(); if (P.rec && P.rec.state === 'recording') { P.cancelRec = true; P.rec.stop(); }
   $('#player').classList.remove('on');
 }
-function pickMime() {
+async function shuffleBgm() {
+  const wasPlaying = P.playing; pause();
+  ['#pShuffle', '#pRec', '#pPlay'].forEach(x => $(x).disabled = true);
+  if ($('#ssBgm').value !== 'random' && $('#ssBgm').value !== 'off') $('#ssBgm').value = 'random';
+  await chooseTrack();
+  ['#pShuffle', '#pRec', '#pPlay'].forEach(x => $(x).disabled = false);
+  if (wasPlaying) play(); else audioStop();
+}
+function toggleMute() { AU.muted = !AU.muted; $('#pMute').textContent = AU.muted ? '🔇' : '🔊'; if (AU.muted) audioStop(); else if (P.playing) audioStart(P.t); }
+function pickMime(withAudio) {
   if (!window.MediaRecorder) return null;
-  return ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || null;
+  const list = (withAudio ? ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus'] : [])
+    .concat(['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']);
+  return list.find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || null;
 }
 async function recordVideo() {
-  const mime = pickMime();
   const canvas = $('#stage');
+  const withAudio = !!(AU.track && !AU.muted && AU.ctx && AU.ctx.createMediaStreamDestination);
+  const mime = pickMime(withAudio);
   if (!mime || !canvas.captureStream) return toast('このブラウザは動画の書き出しに対応していません');
   pause(); P.t = 0; renderAt(0);
-  const stream = canvas.captureStream(30);
+  const vstream = canvas.captureStream(30);
+  const tracks = [...vstream.getVideoTracks()];
+  if (withAudio) { AU.recDest = AU.ctx.createMediaStreamDestination(); tracks.push(...AU.recDest.stream.getAudioTracks()); }
+  const stream = new MediaStream(tracks);
   const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: P.W * P.H > 2e6 ? 10e6 : 6e6 });
   const chunks = []; P.rec = rec; P.cancelRec = false;
   rec.ondataavailable = e => e.data && e.data.size && chunks.push(e.data);
   const btn = $('#pRec'); btn.disabled = true; btn.textContent = '● 録画中…';
-  $('#pPlay').disabled = $('#pRestart').disabled = true;
+  ['#pPlay', '#pRestart', '#pShuffle', '#pMute'].forEach(s => $(s).disabled = true);
   rec.onstop = () => {
-    btn.disabled = false; btn.textContent = '⬇ 動画に保存'; $('#pPlay').disabled = $('#pRestart').disabled = false;
-    stream.getTracks().forEach(t => t.stop());
+    btn.disabled = false; btn.textContent = '⬇ 動画に保存';
+    ['#pPlay', '#pRestart', '#pShuffle', '#pMute'].forEach(s => $(s).disabled = false);
+    stream.getTracks().forEach(t => t.stop()); AU.recDest = null;
     if (P.cancelRec) return;
     const type = mime.split(';')[0], ext = type.includes('mp4') ? 'mp4' : 'webm';
     const d = new Date(P.trip.start);
     const file = new File(chunks, `ride_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.${ext}`, { type });
     const url = URL.createObjectURL(file);
-    sheet(`<video src="${url}" controls playsinline></video><p class="muted" style="margin:0 0 12px">${(file.size/1048576).toFixed(1)} MB・${ext.toUpperCase()}　${NATIVE ? '写真アプリに保存、またはLINE等で共有できます。' : '「保存／共有」から写真アプリやLINE等に保存できます。'}</p>
+    sheet(`<video src="${url}" controls playsinline></video><p class="muted" style="margin:0 0 12px">${(file.size/1048576).toFixed(1)} MB・${ext.toUpperCase()}${withAudio ? '・BGM付き' : ''}　${NATIVE ? '写真アプリに保存、またはLINE等で共有できます。' : '「保存／共有」から写真アプリやLINE等に保存できます。'}</p>
       <div class="row"><button class="btn" data-a="close">閉じる</button>${NATIVE ? '<button class="btn" data-a="save">共有</button><button class="btn acc" data-a="photos">写真に保存</button>' : '<button class="btn acc" data-a="save">保存／共有</button>'}</div>`);
     $('#sheet').onclick = async e => {
       const a = e.target.closest('[data-a]'); if (!a) return;
@@ -945,8 +1672,7 @@ async function recordVideo() {
       else { closeSheet(); URL.revokeObjectURL(url); }
     };
   };
-  // 先頭の数枚を読み込んでから開始
-  for (let k = 0; k < 50 && !ensureLoaded(0); k++) await sleep(60);
+  for (let k = 0; k < 60 && !ensureLoaded(0); k++) await sleep(60);
   rec.start(1000);
   P.onEnd = () => setTimeout(() => rec.state === 'recording' && rec.stop(), 300);
   play();
@@ -957,7 +1683,21 @@ $('#btnStart').onclick = startTrip;
 $('#btnStop').onclick = stopTrip;
 $('#btnRecenter').onclick = () => { S.follow = true; const f = S.lastFix; if (f) S.liveMap.setView([f.lat, f.lon], Math.max(S.liveMap.getZoom(), 15)); };
 $('#liveCam').onchange = e => { liveCapture(e.target.files[0]); e.target.value = ''; };
-$('#btnBack').onclick = () => { S.detail = null; renderHome(); };
+$('#btnBack').onclick = () => { stopReplay(); setCursor(null); S.detail = null; renderHome(); };
+$('#rpPlay').onclick = toggleReplay;
+$('#rpSeek').oninput = e => { if (!S.detail) return; RP_.t = S.detail.start + (+e.target.value / 1000) * (S.detail.end - S.detail.start); replayUpdate(true); };
+['#spdChart', '#eleChart'].forEach(id => { const c = $(id); c.addEventListener('pointerdown', chartPointer); c.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) chartPointer(e); }); });
+window.addEventListener('resize', () => { if (S.detail) renderCharts(); });
+$('#detMemo').oninput = onMemo;
+$('#btnFuelLive').onclick = liveFuel;
+$('#btnFuelAdd').onclick = addFuelDetail;
+$('#btnShare').onclick = makeSummaryImage;
+$('#btnBackup').onclick = makeBackup;
+$('#restoreFile').onchange = e => { restoreBackup(e.target.files[0]); e.target.value = ''; };
+$('#addSongs').onchange = e => { addSongs([...e.target.files]); e.target.value = ''; };
+$('#pShuffle').onclick = shuffleBgm;
+$('#pMute').onclick = toggleMute;
+$('#ssBgm').onchange = e => store.set('bgm', e.target.value);
 $('#detName').onchange = async e => { if (!S.detail) return; S.detail.name = e.target.value.trim() || S.detail.name; await idbPut('trips', S.detail); };
 $('#btnDel').onclick = async () => {
   if (!(await ask('この記録と写真を削除します。元に戻せません。', '削除', true))) return;
@@ -968,7 +1708,7 @@ $('#btnGpx').onclick = exportGpx;
 $('#addPhotos').onchange = e => { addPhotos([...e.target.files]); e.target.value = ''; };
 $('#btnPlay').onclick = openPlayer;
 $('#pPlay').onclick = () => { if (P.playing) pause(); else { if (P.t >= P.total) P.t = 0; play(); } };
-$('#pRestart').onclick = () => { P.t = 0; if (!P.playing) play(); };
+$('#pRestart').onclick = () => { P.t = 0; if (P.playing) audioStart(0); else play(); };
 $('#pClose').onclick = closePlayer;
 $('#pRec').onclick = recordVideo;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeSheet(); };
