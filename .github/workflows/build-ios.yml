@@ -2,6 +2,8 @@
 # Actions タブ →「Build iOS (unsigned ipa)」→「Run workflow」
 name: Build iOS (unsigned ipa)
 on: workflow_dispatch
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: macos-15
@@ -24,3 +26,8 @@ jobs:
           zip -qry RideLog-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
         with: { name: RideLog-ipa, path: RideLog-unsigned.ipa }
+      - name: Publish to Releases (latest)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" RideLog-unsigned.ipa --title "RideLog $TAG" --notes "Sideloadly でインストールしてください" --latest
