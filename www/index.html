@@ -143,6 +143,9 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
 .songrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bgmname{font-size:12px;color:var(--sub);max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .replaymark{width:16px;height:16px;border-radius:50%;background:#ff8a1f;border:3px solid #fff;box-shadow:0 0 0 5px rgba(255,138,31,.3)}
+#live.paused .badge .rec{animation:none;background:var(--acc2)}
+#live.paused .speed .v{color:var(--sub)}
+.livebtns .btn{padding:16px 8px;font-size:15px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -194,6 +197,7 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
     <div class="livebtns">
       <label class="btn filebtn" style="flex:.6">📷 撮影<input type="file" accept="image/*" capture="environment" id="liveCam"></label>
       <button class="btn" id="btnFuelLive" style="flex:.6">⛽ 給油</button>
+      <button class="btn" id="btnPause">⏸ 一時停止</button>
       <button class="btn stopbtn" id="btnStop">■ 終了</button>
     </div>
   </div>
@@ -371,14 +375,26 @@ function restSec() { return (+store.get('restMin', 3) || 3) * 60; }
  * - 最高速度: GPSのドップラー速度を優先、無い端末は区間速度
  * - 休憩: 半径50m以内に設定時間以上とどまった時間
  */
-function computeStats(pts, start, end) {
+function computeStats(pts, start, end, pauses) {
   const REST = restSec(), R = 50, VMAX = 300/3.6;
+  // 一時停止の区間（終了していないものは end まで）
+  const ps = (pauses || []).map(x => ({ from: x.from, to: x.to == null ? end : x.to })).filter(x => x.to > x.from).sort((a, b) => a.from - b.from);
   let dist = 0, max = 0, rest = 0;
-  let dA = null, cA = null, cLast = null, vRef = null;
+  let dA = null, cA = null, cLast = null, vRef = null, prevT = null, pi = 0;
   const restSpans = [];
+  const closeCluster = endT => { const dur = (endT - cA.t) / 1000; if (dur >= REST) { rest += dur; restSpans.push({ from: cA.t, to: endT, lat: cA.lat, lon: cA.lon }); } };
   for (const p of pts) {
     if (p.acc > 50) continue;
     if (p.spd != null && p.acc <= 25 && p.spd < VMAX) max = Math.max(max, p.spd);
+    let crossed = null;
+    while (pi < ps.length && ps[pi].from <= p.t) { if (prevT != null && ps[pi].from >= prevT - 1000) crossed = ps[pi]; pi++; }
+    prevT = p.t;
+    if (crossed && dA) {
+      // 一時停止をはさんだ区間は距離に入れず、ここから計測し直す
+      closeCluster((crossed.from - cLast.t) < 120000 ? crossed.from : cLast.t);
+      dA = cA = cLast = p; vRef = null;
+      continue;
+    }
     if (p.spd == null && p.acc <= 25) { // 速度を出さない端末: 4〜20秒間隔の区間速度
       if (!vRef) vRef = p;
       else { const vdt = (p.t - vRef.t) / 1000; if (vdt >= 4) { if (vdt <= 20) { const v = hav(vRef, p) / vdt; if (v < VMAX) max = Math.max(max, v); } vRef = p; } }
@@ -387,22 +403,24 @@ function computeStats(pts, start, end) {
     const d = hav(dA, p), dt = (p.t - dA.t) / 1000;
     if (d >= Math.max(8, Math.min(p.acc, 25)) && dt > 0) {
       const moving = p.spd != null ? p.spd > 0.7 : d / dt >= 1;
-      if (moving) {
-        dist += d;
-        dA = p;
-      }
+      if (moving) { dist += d; dA = p; }
     }
-    if (hav(cA, p) > R) {
-      const dur = (cLast.t - cA.t) / 1000;
-      if (dur >= REST) { rest += dur; restSpans.push({ from: cA.t, to: cLast.t, lat: cA.lat, lon: cA.lon }); }
-      cA = cLast = p;
-    } else cLast = p;
+    if (hav(cA, p) > R) { closeCluster(cLast.t); cA = cLast = p; }
+    else cLast = p;
   }
   if (cA) {
-    const tailEnd = (end - cLast.t) < 120000 ? end : cLast.t;
-    const dur = (tailEnd - cA.t) / 1000;
-    if (dur >= REST) { rest += dur; restSpans.push({ from: cA.t, to: tailEnd, lat: cA.lat, lon: cA.lon }); }
+    let tailEnd = (end - cLast.t) < 120000 ? end : cLast.t;
+    const after = ps.find(x => x.from >= cLast.t - 1000 && x.from <= end);
+    if (after) tailEnd = (after.from - cLast.t) < 120000 ? after.from : cLast.t;
+    closeCluster(tailEnd);
   }
+  for (const x of ps) {
+    const a = Math.max(start, x.from), b = Math.min(end, x.to); if (b <= a) continue;
+    rest += (b - a) / 1000;
+    const q = posAt(pts, a);
+    restSpans.push({ from: a, to: b, lat: q ? q.lat : null, lon: q ? q.lon : null, paused: true });
+  }
+  restSpans.sort((a, b) => a.from - b.from);
   const total = Math.max(0, (end - start) / 1000);
   rest = Math.min(rest, total);
   const moving = Math.max(0, total - rest);
@@ -460,7 +478,7 @@ async function renderHome() {
   if (!trips.length) { el.innerHTML = '<div class="empty">まだ記録がありません</div>'; return; }
   el.innerHTML = '';
   for (const t of trips) {
-    const st = t.stats || computeStats(t.points, t.start, t.end);
+    const st = t.stats || computeStats(t.points, t.start, t.end, t.pauses);
     const b = document.createElement('button');
     b.className = 'trip';
     b.innerHTML = `<div class="ic">🏍️</div><div style="flex:1;min-width:0"><div class="t1">${esc(t.name)}</div>
@@ -493,6 +511,15 @@ function beginLive() {
   S.livePoly.setLatLngs(S.trip.points.filter(p => p.acc <= 50).map(p => [p.lat, p.lon]));
   setTimeout(() => S.liveMap.invalidateSize(), 50);
   S.follow = true;
+  if (!isPaused()) startWatch();
+  updatePauseUI();
+  acquireWake();
+  clearInterval(S.tick); S.tick = setInterval(renderLive, 1000);
+  renderLive();
+}
+const isPaused = () => !!(S.trip && S.trip.pauses && S.trip.pauses.length && S.trip.pauses.at(-1).to == null);
+function startWatch() {
+  stopWatch();
   if (NATIVE) {
     // バックグラウンドでも位置を受け取る（ナビ・音楽アプリと併用可）
     BG.addWatcher({ backgroundMessage: 'ツーリングを記録中', backgroundTitle: 'RideLog', requestPermissions: true, stale: false, distanceFilter: 0 },
@@ -503,9 +530,24 @@ function beginLive() {
   } else {
     S.watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
   }
-  acquireWake();
-  clearInterval(S.tick); S.tick = setInterval(renderLive, 1000);
-  renderLive();
+}
+function stopWatch() {
+  if (S.watchId != null) { if (NATIVE) BG.removeWatcher({ id: S.watchId }).catch(() => {}); else navigator.geolocation.clearWatch(S.watchId); }
+  S.watchId = null;
+}
+// 一時停止：GPSを止め、その間は距離に入れず休憩時間として扱う
+function togglePause() {
+  if (!S.trip) return;
+  if (isPaused()) { S.trip.pauses.at(-1).to = Date.now(); S.lastFix = null; startWatch(); toast('記録を再開しました'); }
+  else { (S.trip.pauses = S.trip.pauses || []).push({ from: Date.now(), to: null }); stopWatch(); toast('一時停止しました（GPSオフ）'); }
+  saveLive(); updatePauseUI(); renderLive();
+}
+function updatePauseUI() {
+  const p = isPaused();
+  $('#btnPause').textContent = p ? '▶ 再開' : '⏸ 一時停止';
+  $('#btnPause').classList.toggle('acc', p);
+  $('#live').classList.toggle('paused', p);
+  if (p) { $('#gpsDot').className = 'dot mid'; $('#gpsText').textContent = '一時停止中（GPSオフ）'; }
 }
 function onPos(pos) {
   const c = pos.coords, t = pos.timestamp || Date.now();
@@ -513,6 +555,7 @@ function onPos(pos) {
   const spd = (c.speed == null || isNaN(c.speed) || c.speed < 0) ? null : +c.speed.toFixed(2);
   const p = { t, lat: +c.latitude.toFixed(6), lon: +c.longitude.toFixed(6), acc, spd };
   if (c.altitude != null && !isNaN(c.altitude)) p.alt = Math.round(c.altitude);
+  if (!S.trip || isPaused()) return;
   S.lastFix = p;
   const pts = S.trip.points, last = pts[pts.length - 1];
   setGps(acc);
@@ -549,7 +592,7 @@ function saveLive() { S.saveT = Date.now(); if (S.trip) idbPut('trips', S.trip).
 function renderLive() {
   if (!S.trip) return;
   const now = Date.now();
-  const st = computeStats(S.trip.points, S.trip.start, now);
+  const st = computeStats(S.trip.points, S.trip.start, now, S.trip.pauses);
   const f = S.lastFix;
   let cur = 0;
   if (f && now - f.t < 6000) {
@@ -563,7 +606,9 @@ function renderLive() {
   $('#lvTotal').textContent = fmtDur(st.total);
   $('#lvMove').textContent = fmtDur(st.moving);
   $('#lvRest').textContent = fmtDur(st.rest);
-  $('#liveClock').textContent = '記録中 ' + fmtDur(st.total);
+  const pz = isPaused();
+  $('#liveClock').textContent = (pz ? '一時停止中 ' : '記録中 ') + fmtDur(st.total);
+  if (pz) $('#lvSpeed').textContent = '—';
 }
 async function acquireWake() {
   if (NATIVE) { $('#wakeText').textContent = 'バックグラウンド記録OK'; return; }
@@ -580,12 +625,12 @@ window.addEventListener('pagehide', saveLive);
 
 async function stopTrip() {
   if (!(await ask('記録を終了しますか？', '終了する', true))) return;
-  if (S.watchId != null) { if (NATIVE) BG.removeWatcher({ id: S.watchId }).catch(() => {}); else navigator.geolocation.clearWatch(S.watchId); }
-  S.watchId = null; clearInterval(S.tick);
+  stopWatch(); clearInterval(S.tick);
   try { S.wake && S.wake.release(); } catch {}
   const t = S.trip;
   t.end = Date.now(); t.status = 'done';
-  t.stats = computeStats(t.points, t.start, t.end);
+  if (t.pauses && t.pauses.length && t.pauses.at(-1).to == null) t.pauses.at(-1).to = t.end;
+  t.stats = computeStats(t.points, t.start, t.end, t.pauses);
   await idbPut('trips', t);
   S.trip = null;
   await openTrip(t.id);
@@ -736,7 +781,7 @@ async function openTrip(id) {
   const trip = await idbGet('trips', id);
   if (!trip) return renderHome();
   S.detail = trip;
-  trip.stats = computeStats(trip.points, trip.start, trip.end);
+  trip.stats = computeStats(trip.points, trip.start, trip.end, trip.pauses);
   show('detail');
   $('#detName').value = trip.name;
   $('#detWhen').textContent = `${fmtDate(trip.start)} ${fmtHM(trip.start)} – ${fmtHM(trip.end)}`;
@@ -755,8 +800,8 @@ async function openTrip(id) {
     const flag = (txt, bg) => L.divIcon({ className: '', html: `<div style="background:${bg};color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-120%)">${txt}</div>` });
     L.marker([good[0].lat, good[0].lon], { icon: flag('START', '#1f9d55') }).addTo(S.detLayer);
     L.marker([good.at(-1).lat, good.at(-1).lon], { icon: flag('GOAL', '#d64545') }).addTo(S.detLayer);
-    for (const r of st.restSpans) L.circleMarker([r.lat, r.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#7a5cff', fillOpacity: 1 })
-      .bindPopup(`休憩 ${fmtHM(r.from)}–${fmtHM(r.to)}（${fmtDurJ((r.to - r.from)/1000)}）`).addTo(S.detLayer);
+    for (const r of st.restSpans) if (r.lat != null) L.circleMarker([r.lat, r.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#7a5cff', fillOpacity: 1 })
+      .bindPopup(`${r.paused ? '一時停止' : '休憩'} ${fmtHM(r.from)}–${fmtHM(r.to)}（${fmtDurJ((r.to - r.from)/1000)}）`).addTo(S.detLayer);
   }
   $('#legend').innerHTML = SPEED_BINS.map((b, i) => `<span><i style="background:${b[1]}"></i>${i === 0 ? '〜20' : i === SPEED_BINS.length - 1 ? '80〜' : (SPEED_BINS[i-1][0]) + '〜' + b[0]}</span>`).join('') + '<span>km/h</span><span><i style="background:#7a5cff;width:8px;height:8px;border-radius:50%"></i>休憩</span>';
   setTimeout(() => {
@@ -1078,7 +1123,7 @@ function fuelForm(onSave) {
 function liveFuel() {
   if (!S.trip) return;
   fuelForm(async f => {
-    const st = computeStats(S.trip.points, S.trip.start, Date.now());
+    const st = computeStats(S.trip.points, S.trip.start, Date.now(), S.trip.pauses);
     Object.assign(f, { t: Date.now(), dist: Math.round(st.dist) });
     (S.trip.fuel = S.trip.fuel || []).push(f); saveLive();
     toast(`給油 ${f.liters}L を記録しました`);
@@ -1095,7 +1140,7 @@ async function fuelEconomy() {
   const trips = (await idbAll('trips')).filter(t => t.status === 'done').map(t => t.id === (S.detail && S.detail.id) ? S.detail : t).sort((a, b) => a.start - b.start);
   let odo = 0; const entries = [];
   for (const t of trips) {
-    const d = t.stats ? t.stats.dist : computeStats(t.points, t.start, t.end).dist;
+    const d = t.stats ? t.stats.dist : computeStats(t.points, t.start, t.end, t.pauses).dist;
     for (const f of (t.fuel || [])) entries.push({ f, odo: odo + Math.min(f.dist || 0, d) });
     odo += d;
   }
@@ -1690,6 +1735,7 @@ $('#rpSeek').oninput = e => { if (!S.detail) return; RP_.t = S.detail.start + (+
 window.addEventListener('resize', () => { if (S.detail) renderCharts(); });
 $('#detMemo').oninput = onMemo;
 $('#btnFuelLive').onclick = liveFuel;
+$('#btnPause').onclick = togglePause;
 $('#btnFuelAdd').onclick = addFuelDetail;
 $('#btnShare').onclick = makeSummaryImage;
 $('#btnBackup').onclick = makeBackup;
