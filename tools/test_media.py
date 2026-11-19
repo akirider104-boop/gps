@@ -27,14 +27,6 @@ async def main():
     print('toast:', await pg.text_content('#toast'))
     order = await pg.evaluate("S.photos.map(p=>[p.kind, p.t?new Date(p.t).toLocaleTimeString('ja-JP'):null, inTrip(p), p.dur?+p.dur.toFixed(1):null])")
     print('order:', order)
-    # move: last extra to first
-    ex_before = await pg.evaluate("S.photos.filter(p=>!inTrip(p)).map(p=>p.kind+':'+(p.t?'t':'-'))")
-    btns = pg.locator('.ph .mv button[data-mv="-1"]:not([disabled])')
-    await btns.last.click(); await pg.wait_for_timeout(500)
-    ex_after = await pg.evaluate("S.photos.filter(p=>!inTrip(p)).map(p=>p.kind+':'+(p.t?'t':'-'))")
-    print('extras before', ex_before, 'after', ex_after)
-    await pg.reload(); await pg.wait_for_timeout(500); await pg.evaluate("openTrip('tm')"); await pg.wait_for_timeout(1200)
-    print('persisted', await pg.evaluate("S.photos.filter(p=>!inTrip(p)).map(p=>p.kind+':'+(p.t?'t':'-'))"))
     await pg.locator('#photoGrid').scroll_into_view_if_needed(); await pg.locator('#photoGrid').screenshot(path=f'{SHOTS}/media_grid.png')
     # slideshow
     await pg.select_option('#ssDur','2'); await pg.select_option('#ssBgm','off')

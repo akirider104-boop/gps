@@ -16,6 +16,7 @@
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/exifr.lite.js"></script>
 <script src="vendor/capacitor.js"></script>
+<script src="vendor/Sortable.min.js"></script>
 <style>
 :root{
   --bg:#0b0f15; --panel:#151c26; --panel2:#1d2633; --line:#2a3544;
@@ -147,10 +148,10 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
 #live.paused .speed .v{color:var(--sub)}
 .livebtns .btn{padding:16px 8px;font-size:15px;white-space:nowrap}
 .vbadge{position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.65);border-radius:6px;padding:1px 5px;z-index:2}
-.phhead{grid-column:1/-1;font-size:12px;color:var(--sub);margin:10px 2px 2px}
-.ph .mv{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;justify-content:space-between;padding:0 3px;z-index:3}
-.ph .mv button{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.6);font-size:12px}
-.ph .mv button:disabled{opacity:.25}
+.ph{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.ph img{pointer-events:none;-webkit-user-drag:none}
+.ph-ghost{opacity:.35}
+.ph-chosen{outline:3px solid var(--acc);outline-offset:-3px;transform:scale(1.04)}
 </style>
 </head>
 <body>
@@ -254,7 +255,8 @@ textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);b
     <button class="btn acc" id="btnLib" style="display:none">📷 カメラロールから取り込み</button>
     <label class="btn acc filebtn" id="lblAdd">＋ 写真を追加<input type="file" accept="image/*,video/*" multiple id="addPhotos"></label>
   </div>
-  <p class="muted" style="margin:0 0 10px">走行中に撮った写真は時刻順に並びます。他の機器の写真・動画も日時を問わず追加でき、走行外・日時不明のものは最後に（日時・地図なしで）流れます。</p>
+  <p class="muted" style="margin:0 0 10px">走行中に撮った写真は時刻順に並びます。他の機器の写真・動画も日時を問わず追加でき、走行外・日時不明のものは最後に（日時・地図なしで）流れます。並び順は長押しで自由に変えられます。</p>
+  <div class="row" id="orderBar" style="justify-content:space-between;margin:0 0 6px;display:none"><span class="muted">長押しして動かすと並べ替えできます</span><button class="btn" id="btnOrderReset" style="padding:6px 10px;font-size:13px;display:none">時刻順に戻す</button></div>
   <div class="photos" id="photoGrid"></div>
   <div class="card" style="margin-top:14px">
     <div class="row">
@@ -677,6 +679,18 @@ async function importPhoto(file, trip, meta) {
 const inTrip = (p, trip = S.detail) => p.t != null && trip && p.t >= trip.start - 900000 && p.t <= trip.end + 900000;
 // 並び順：走行中のもの（自分の写真・他機器の写真とも）を時刻順 → その後に範囲外・時刻不明を追加順
 function orderPhotos(list, trip) {
+  if (trip && trip.customOrder) {
+    // 並べ替え済み：保存した順。あとから追加した分は、走行中なら時刻の近い位置、それ以外は最後へ
+    const ordered = list.filter(p => p.order != null).sort((x, y) => x.order - y.order);
+    const rest = list.filter(p => p.order == null).sort((x, y) => (x.t ?? 9e15) - (y.t ?? 9e15) || (x.added || 0) - (y.added || 0));
+    for (const p of rest) {
+      if (!inTrip(p, trip)) { ordered.push(p); continue; }
+      let idx = -1; ordered.forEach((q, i) => { if (inTrip(q, trip) && q.t <= p.t) idx = i; });
+      if (idx === -1) { const f = ordered.findIndex(q => inTrip(q, trip)); idx = f < 0 ? ordered.length - 1 : f - 1; }
+      ordered.splice(idx + 1, 0, p);
+    }
+    return ordered;
+  }
   const a = list.filter(p => inTrip(p, trip)).sort((x, y) => x.t - y.t);
   const key = p => p.order ?? p.added ?? 0;
   const b = list.filter(p => !inTrip(p, trip)).sort((x, y) => key(x) - key(y) || x.id.localeCompare(y.id));
@@ -777,30 +791,44 @@ async function renderPhotos() {
   S.photos = orderPhotos(await photosOf(trip.id), trip);
   const g = $('#photoGrid');
   g.innerHTML = S.photos.length ? '' : '<div class="empty" style="grid-column:1/-1">写真・動画はまだありません</div>';
-  const extras = S.photos.filter(p => !inTrip(p, trip));
-  let headerDone = false;
   for (const p of S.photos) {
     const u = URL.createObjectURL(p.thumb); S.thumbURLs.push(u);
     const rin = inTrip(p, trip);
-    if (!rin && !headerDone) { headerDone = true; const h = document.createElement('div'); h.className = 'phhead'; h.textContent = '日時なし・走行外（この順で最後に流れます。◀ ▶ で並べ替え）'; g.appendChild(h); }
-    const d = document.createElement('div'); d.className = 'ph';
+    const d = document.createElement('div'); d.className = 'ph'; d.dataset.id = p.id;
     const badge = !rin ? '<span class="warn" style="background:rgba(90,100,115,.9)">追加分</span>' : p.lat == null ? '<span class="warn">位置なし</span>' : '';
     d.innerHTML = `<img src="${u}" alt="">${p.kind === 'video' ? `<span class="vbadge">▶ ${fmtDur(p.dur || 0)}</span>` : ''}
       <div class="cap">${rin ? fmtHM(p.t) + '<br>' + esc(p.place || '') : '日時なし'}</div>${badge}<button class="x" title="削除">✕</button>
-      ${!rin ? `<div class="mv"><button data-mv="-1" ${extras[0] === p ? 'disabled' : ''}>◀</button><button data-mv="1" ${extras.at(-1) === p ? 'disabled' : ''}>▶</button></div>` : ''}`;
-    d.querySelectorAll('[data-mv]').forEach(btn => btn.onclick = () => moveExtra(p, +btn.dataset.mv));
+      `;
     d.querySelector('.x').onclick = async () => { if (await ask(`この${p.kind === 'video' ? '動画' : '写真'}を外しますか？`, '外す', true)) { await idbDel('photos', p.id); renderPhotos(); } };
     g.appendChild(d);
   }
+  $('#orderBar').style.display = S.photos.length > 1 ? '' : 'none';
+  $('#btnOrderReset').style.display = trip.customOrder ? '' : 'none';
+  setupSortable();
   drawPhotoMarkers();
 }
-// 日時なし分の並べ替え：順番を振り直して保存
-async function moveExtra(p, dir) {
-  const ex = S.photos.filter(x => !inTrip(x));
-  const i = ex.indexOf(p), j = i + dir;
-  if (i < 0 || j < 0 || j >= ex.length) return;
-  [ex[i], ex[j]] = [ex[j], ex[i]];
-  for (let k = 0; k < ex.length; k++) { if (ex[k].order !== k + 1) { ex[k].order = k + 1; await idbPut('photos', ex[k]); } }
+// 長押しして指で動かすと、自動・手動に関係なく全体で並べ替え
+function setupSortable() {
+  if (!window.Sortable || S.sortable) return;
+  S.sortable = Sortable.create($('#photoGrid'), {
+    animation: 160, delay: 220, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4,
+    filter: '.x', preventOnFilter: false, draggable: '.ph', ghostClass: 'ph-ghost', chosenClass: 'ph-chosen',
+    onEnd: e => { if (e.oldIndex !== e.newIndex) saveOrder(); },
+  });
+}
+async function saveOrder() {
+  const trip = S.detail; if (!trip) return;
+  const ids = [...$('#photoGrid').querySelectorAll('.ph')].map(d => d.dataset.id);
+  const byId = new Map(S.photos.map(p => [p.id, p]));
+  for (let k = 0; k < ids.length; k++) { const p = byId.get(ids[k]); if (p && p.order !== k + 1) { p.order = k + 1; await idbPut('photos', p); } }
+  if (!trip.customOrder) { trip.customOrder = true; await idbPut('trips', trip); }
+  await renderPhotos();
+}
+async function resetOrder() {
+  const trip = S.detail; if (!trip) return;
+  if (!(await ask('並べ替えをやめて、撮影時刻順に戻しますか？', '時刻順に戻す'))) return;
+  trip.customOrder = false; await idbPut('trips', trip);
+  for (const p of S.photos) if (p.order != null) { delete p.order; await idbPut('photos', p); }
   await renderPhotos();
 }
 function drawPhotoMarkers() {
@@ -1902,6 +1930,7 @@ if (NATIVE) {
   document.querySelector('#home p.muted').textContent = '記録中に地図アプリや音楽アプリに切り替えても、バックグラウンドで記録を続けます。';
 }
 $('#btnLib').onclick = () => collectFromLibrary(false);
+$('#btnOrderReset').onclick = resetOrder;
 (function installHint() {
   if (NATIVE) { $('#installHint').textContent = 'iPhoneアプリ版（バックグラウンド記録対応）'; return; }
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
