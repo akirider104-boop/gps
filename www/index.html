@@ -992,15 +992,28 @@ const TILE_URL = {
   dem: (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`,
 };
 const tileCache = new Map();
-function loadTile(url) {
-  if (!tileCache.has(url)) tileCache.set(url, new Promise(res => {
+// 地図タイル：同時取得数を絞り、失敗したら少し待って再試行（モバイル回線で取りこぼさないように）
+const tileQ = { active: 0, waiting: [] };
+function tileSlot() { return new Promise(r => { if (tileQ.active < 6) { tileQ.active++; r(); } else tileQ.waiting.push(r); }); }
+function tileFree() { const n = tileQ.waiting.shift(); if (n) n(); else tileQ.active--; }
+function fetchTileOnce(url, ms) {
+  return new Promise(res => {
     const im = new Image(); im.crossOrigin = 'anonymous';
-    const fail = () => { clearTimeout(to); tileCache.delete(url); res(null); };
-    const to = setTimeout(fail, 8000);
-    im.onload = () => { clearTimeout(to); res(im); };
-    im.onerror = fail;
+    const done = v => { clearTimeout(to); im.onload = im.onerror = null; res(v); };
+    const to = setTimeout(() => { im.src = ''; done(null); }, ms);
+    im.onload = () => done(im.naturalWidth ? im : null);
+    im.onerror = () => done(null);
     im.src = url;
-  }));
+  });
+}
+function loadTile(url) {
+  if (!tileCache.has(url)) tileCache.set(url, (async () => {
+    await tileSlot();
+    try {
+      for (let k = 0; k < 3; k++) { const im = await fetchTileOnce(url, 12000 + k * 6000); if (im) return im; await sleep(400 * (k + 1)); }
+      return null;
+    } finally { tileFree(); }
+  })().then(im => { if (!im) tileCache.delete(url); return im; }));
   return tileCache.get(url);
 }
 const wx = (lon, z) => (lon + 180) / 360 * 256 * 2 ** z;
@@ -1020,13 +1033,26 @@ async function baseMap(pts, W, H, { fill = .7, style = 'std', maxZ = 16 } = {}) 
   for (; z > 4; z--) if (wx(r, z) - wx(l, z) <= W * fill && wy(a, z) - wy(b, z) <= H * fill) break;
   const ox = (wx(l, z) + wx(r, z)) / 2 - W / 2, oy = (wy(a, z) + wy(b, z)) / 2 - H / 2;
   const proj = (lat, lon) => [wx(lon, z) - ox, wy(lat, z) - oy];
+  // 取れなかったタイルは1〜2段広い地図の該当部分を拡大して埋める（黒い四角を出さない）
+  const drawTile = async (tx, ty) => {
+    const im = await loadTile(TILE_URL[style](z, tx, ty));
+    const x = Math.round(tx * 256 - ox), y = Math.round(ty * 256 - oy);
+    if (im) { ctx.drawImage(im, x, y, 256, 256); return true; }
+    for (let d = 1; d <= 2; d++) {
+      const f = 2 ** d, pz = z - d; if (pz < 2) break;
+      const pim = await loadTile(TILE_URL[style](pz, Math.floor(tx / f), Math.floor(ty / f)));
+      if (pim) { const sw = 256 / f; ctx.drawImage(pim, (tx % f) * sw, (ty % f) * sw, sw, sw, x, y, 256, 256); return 'parent'; }
+    }
+    return false;
+  };
   const jobs = [];
   for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H - 1) / 256); ty++)
-    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W - 1) / 256); tx++)
-      jobs.push(loadTile(TILE_URL[style](z, tx, ty)).then(im => { if (im) ctx.drawImage(im, Math.round(tx * 256 - ox), Math.round(ty * 256 - oy), 256, 256); return !!im; }));
-  let ok = (await Promise.all(jobs)).some(Boolean);
+    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W - 1) / 256); tx++) jobs.push(drawTile(tx, ty));
+  const res = await Promise.all(jobs);
+  let ok = res.some(Boolean);
+  const complete = res.every(v => v === true);
   if (ok) { try { ctx.getImageData(0, 0, 1, 1); } catch { ok = false; darkBg(ctx, W, H); } }
-  return { canvas: c, ok, proj, z };
+  return { canvas: c, ok, proj, z, complete };
 }
 function strokePath(ctx, pp, lw, color, upto = pp.length, k = 1, outline = true) {
   if (upto < 2) return;
@@ -1620,7 +1646,7 @@ async function prepareMaps() {
     const mctx = P.mini.canvas.getContext('2d');
     if (!P.mini.ok) { mctx.fillStyle = 'rgba(255,255,255,.04)'; mctx.fillRect(0, 0, M, M); }
     strokePath(mctx, P.mini.pp, 3, P.mini.ok ? 'rgba(90,100,115,.75)' : 'rgba(160,170,185,.55)', P.mini.pp.length, 1, false);
-    P.mapKey = key;
+    P.mapKey = P.big.complete && P.mini.complete ? key : null; // 欠けがあれば次回取り直す
   }
   for (const s of P.slides) if (s.type === 'photo') {
     const p = s.p;
